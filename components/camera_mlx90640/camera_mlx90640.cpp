@@ -95,6 +95,10 @@ namespace esphome{
         void MLX90640::dump_config() {
             ESP_LOGCONFIG(TAG, "MLX90640:");
             LOG_I2C_DEVICE(this);
+            if (this->is_failed())
+            {
+                ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
+            }
             ESP_LOGCONFIG(TAG, "  Address: 0x%02X", this->address_);
             ESP_LOGCONFIG(TAG, "  Color MinTemp: %d", static_cast<int>(this->mintemp_));
             ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
