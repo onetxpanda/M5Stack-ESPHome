@@ -23,8 +23,6 @@ namespace esphome {
                 sensor::Sensor *max_temperature_sensor_{nullptr};
                 sensor::Sensor *mean_temperature_sensor_{nullptr};
                 sensor::Sensor *median_temperature_sensor_{nullptr};
-                //sensor::Sensor *min_index ;
-                // sensor::Sensor *max_index ;
               public:
                 float get_setup_priority() const override { return setup_priority::LATE; }
                 void setup() override ;
