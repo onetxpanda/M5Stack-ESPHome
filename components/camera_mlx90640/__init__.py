@@ -1,24 +1,14 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
-from esphome.components import sensor, text_sensor, i2c
-from esphome.components import web_server_base
-from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
-from esphome.core import CORE, coroutine_with_priority
+from esphome.components import sensor
+from esphome.core import coroutine_with_priority
 from esphome.const import (
     CONF_ID,
-    CONF_TEMPERATURE,
     CONF_MIN_TEMPERATURE,
     CONF_MAX_TEMPERATURE,
     DEVICE_CLASS_TEMPERATURE,
     STATE_CLASS_MEASUREMENT,
     UNIT_CELSIUS,
-    CONF_TIMEOUT,
-    STATE_CLASS_MEASUREMENT,
-    UNIT_METER, 
-    ICON_ARROW_EXPAND_VERTICAL,
-    #CONF_PIXEL_DATA
-    
 )
 
 CONF_I2C_ADDRESS = "address"
@@ -34,7 +24,7 @@ CONF_FILTER_LEVEL = "filter_level"
 
 
 
-DEPENDENCIES = ['esp32','web_server_base']
+DEPENDENCIES = ['esp32']
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640_app")
 #MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.PollingComponent)
@@ -42,9 +32,6 @@ MLX90640 = mlx90640_ns.class_("MLX90640", cg.PollingComponent)
 CONFIG_SCHEMA = (
     cv.Schema({
       cv.GenerateID(): cv.declare_id(MLX90640),
-      cv.GenerateID(CONF_WEB_SERVER_BASE_ID): cv.use_id(
-                web_server_base.WebServerBase
-            ),
       cv.Required(CONF_SCL):int,
       cv.Required(CONF_SDA): int,
       cv.Required(CONF_FREQUENCY):int ,
@@ -85,8 +72,7 @@ CONFIG_SCHEMA = (
 
 @coroutine_with_priority(45.0)
 async def to_code(config):
-    paren = await cg.get_variable(config[CONF_WEB_SERVER_BASE_ID])
-    var = cg.new_Pvariable(config[CONF_ID], paren)
+    var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     #var =  cg.new_Pvariable(config[CONF_ID])
     #await cg.register_component(var, config)
@@ -142,4 +128,3 @@ async def to_code(config):
     if CONF_FILTER_LEVEL in config:
         level = config[CONF_FILTER_LEVEL]
         cg.add(var.set_filter_level(level))
-
