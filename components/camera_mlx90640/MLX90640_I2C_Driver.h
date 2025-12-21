@@ -25,6 +25,5 @@
 void MLX90640_I2CInit(esphome::i2c::I2CDevice *device);
 int MLX90640_I2CRead(uint8_t slaveAddr, unsigned int startAddress, unsigned int nWordsRead, uint16_t *data);
 int MLX90640_I2CWrite(uint8_t slaveAddr, unsigned int writeAddress, uint16_t data);
-void MLX90640_I2CFreqSet(int freq);
 bool MLX90640_isConnected(uint8_t addr) ;
 #endif

@@ -64,12 +64,6 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
   return 0;
 }
 
-//Set I2C Freq, in kHz
-//MLX90640_I2CFreqSet(1000) sets frequency to 1MHz
-void MLX90640_I2CFreqSet(int freq) {
-  (void) freq;
-}
-
 //Write two bytes to a two byte address
 int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_t data) {
   if (mlx90640_i2c_device == nullptr) {
