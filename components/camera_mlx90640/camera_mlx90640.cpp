@@ -14,7 +14,7 @@ float pixels[COLS * ROWS];
 uint8_t speed_setting = 2;  // High is 1 , Low is 2
 
 static const char * TAG = "MLX90640" ;
-paramsMLX90640 mlx90640;
+paramsMLX90640 mlx90640_params;
 bool dataValid = false ;
 float medianTemp ;
 float meanTemp ;
@@ -56,7 +56,7 @@ namespace esphome{
                     return;
                 }
 
-                status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
+                status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640_params);
                 if (status != 0)  ESP_LOGE(TAG,"Parameter extraction failed");
                 
                 int SetRefreshRate;
@@ -152,17 +152,17 @@ namespace esphome{
                 ESP_LOGE(TAG,"GetFrame Error: %d",status);
                 }
 
-                float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640);
+                float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640_params);
                 (void) vdd;
-                float Ta  = MLX90640_GetTa(mlx90640Frame, &mlx90640);
+                float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640_params);
                 float tr = Ta - TA_SHIFT;  // Reflected temperature based on the sensor ambient
                                     // temperature.  根据传感器环境温度反射温度
                 float emissivity = 0.95;
-               MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emissivity, tr, pixels);  // save pixels temp to array (pixels).
-                                            // 保存像素temp到数组(像素)
+                MLX90640_CalculateTo(mlx90640Frame, &mlx90640_params, emissivity, tr, pixels); // save pixels temp to array (pixels).
+                                                                                               // 保存像素temp到数组(像素)
                 int mode_ = MLX90640_GetCurMode(MLX90640_address);
                 // amendment.  修正案
-                MLX90640_BadPixelsCorrection((&mlx90640)->brokenPixels, pixels, mode_, &mlx90640);
+                MLX90640_BadPixelsCorrection((&mlx90640_params)->brokenPixels, pixels, mode_, &mlx90640_params);
             }
 
                 filter_outlier_pixel(pixels,sizeof(pixels) / sizeof(pixels[0]), this->filter_level_ );
