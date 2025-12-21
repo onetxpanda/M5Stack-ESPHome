@@ -16,30 +16,33 @@ from esphome.const import (
     
 )
 
+DEPENDENCIES = ['i2c']
 
+mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
+MLX90640Component = mlx90640_ns.class_(
+    "MLX90640Component", cg.PollingComponent,  i2c.I2CDevice
+)
 
-#DEPENDENCIES = ['i2c']
-
-mlx90640_ns = cg.esphome_ns.namespace("mlx90640_app")
-#MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.PollingComponent)
-MLX90640 = mlx90640_ns.class_("MLX90640", cg.PollingComponent)
 CONFIG_SCHEMA = (
-    cv.Schema({
-      cv.GenerateID(): cv.declare_id(MLX90640),
-      cv.Optional(CONF_MIN_TEMPERATURE): sensor.sensor_schema(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(MLX90640Component),
+            cv.Optional(CONF_MIN_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=2,
                 device_class=DEVICE_CLASS_TEMPERATURE,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
-    cv.Optional(CONF_MAX_TEMPERATURE): sensor.sensor_schema(
+            cv.Optional(CONF_MAX_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=2,
                 device_class=DEVICE_CLASS_TEMPERATURE,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
-    }).extend(cv.polling_component_schema("60s"))
-    #.extend(i2c.i2c_device_schema(CONF_I2C_ADDR))
+        }
+    )
+    .extend(cv.polling_component_schema("60s"))
+    .extend(i2c.i2c_device_schema(0x33))
 )
 
 
@@ -47,7 +50,7 @@ CONFIG_SCHEMA = (
 async def to_code(config):
     var =  cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    #await i2c.register_i2c_device(var, config)
+    await i2c.register_i2c_device(var, config)
 
     if CONF_MIN_TEMPERATURE in config:
         conf = config[CONF_MIN_TEMPERATURE]
