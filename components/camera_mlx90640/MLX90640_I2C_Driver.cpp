@@ -89,12 +89,3 @@ int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_
 
   return 0;
 }
-
-bool MLX90640_isConnected(uint8_t addr) {
-  if (mlx90640_i2c_device == nullptr) {
-    ESP_LOGE(TAG, "I2C device not initialized");
-    return false;
-  }
-  (void) addr;
-  return mlx90640_i2c_device->is_device_ready();
-}

@@ -48,10 +48,13 @@ namespace esphome{
                 MLX90640_I2CInit(this);
                 int status;
                 uint16_t eeMLX90640[832];  // 32 * 24 = 768
-                if(MLX90640_isConnected(MLX90640_address)){
+
                 status = MLX90640_DumpEE(MLX90640_address, eeMLX90640);
-                if (status != 0) 
-                ESP_LOGE(TAG,"Failed to load system parameters");
+                if (status != 0) {
+                    ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
+                    this->mark_failed();
+                    return;
+                }
 
                 status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
                 if (status != 0)  ESP_LOGE(TAG,"Parameter extraction failed");
@@ -87,9 +90,6 @@ namespace esphome{
                 
                 // Once params are extracted, we can release eeMLX90640 array.
                 // 一旦提取了参数，我们就可以释放eeMLX90640数组
-                }else{
-                    ESP_LOGE(TAG, "The sensor is not connected");
-                }
         }
 
         void MLX90640::dump_config() {
@@ -132,24 +132,16 @@ namespace esphome{
 
         void MLX90640::update()
         {
-           //this->pixel_data_->publish_state(payload);
-           if(dataValid)
-           {
+            //this->pixel_data_->publish_state(payload);
+            if(dataValid)
+            {
                 this->min_temperature_sensor_->publish_state(min_v);
                 this->max_temperature_sensor_->publish_state(max_v);
                 this->mean_temperature_sensor_->publish_state(meanTemp);
                 this->median_temperature_sensor_->publish_state(medianTemp);
-           }
-           
-           if(MLX90640_isConnected(MLX90640_address)){
-                   this->mlx_update();
-           }else{
-            ESP_LOGE(TAG, "The sensor is not connected");
-            dataValid = false;
-           }
-
+            }
+            this->mlx_update();
         }
-
 
       void MLX90640::mlx_update(){
             for (uint8_t x = 0; x < speed_setting; x++)  // x < 2 Read both subpages
