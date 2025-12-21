@@ -12,7 +12,7 @@ from esphome.const import (
     STATE_CLASS_MEASUREMENT,
 )
 
-DEPENDENCIES = ['i2c']
+DEPENDENCIES = ["i2c"]
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
 MLX90640Component = mlx90640_ns.class_(
