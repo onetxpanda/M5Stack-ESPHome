@@ -9,7 +9,7 @@
 
 
 namespace esphome {
-    namespace mlx90640_app{
+    namespace mlx90640{
          //class MLXDriver ;
          //class MLXApi ;
 

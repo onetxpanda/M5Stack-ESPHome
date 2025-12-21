@@ -21,7 +21,7 @@ CONF_FILTER_LEVEL = "filter_level"
 DEPENDENCIES = ["i2c"]
 AUTO_LOAD = ["sensor"]
 
-mlx90640_ns = cg.esphome_ns.namespace("mlx90640_app")
+mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
 MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.PollingComponent)
 CONFIG_SCHEMA = (
     cv.Schema({

@@ -34,7 +34,7 @@ float max_v        = 35;   // Value of current max temp.  当前最大温度值
 int max_cam_v    = 300;  // Spec in datasheet.  规范的数据表
 
 namespace esphome{
-    namespace mlx90640_app{
+    namespace mlx90640{
         void MLX90640::setup(){
             // Initialize the the sensor data
                 ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
