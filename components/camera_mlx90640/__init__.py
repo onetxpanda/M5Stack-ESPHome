@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import i2c, sensor
 from esphome.core import coroutine_with_priority
 from esphome.const import (
     CONF_ID,
@@ -11,31 +11,21 @@ from esphome.const import (
     UNIT_CELSIUS,
 )
 
-CONF_I2C_ADDRESS = "address"
 CONF_REFRESH_RATE = "refresh_rate"
-CONF_SDA = "sda"
-CONF_SCL = "scl"
-CONF_FREQUENCY = "frequency"
 CONF_MEAN_TEMPERATURE = "mean_temperature"
 CONF_MEDIAN_TEMPERATURE = "median_temperature"
 CONF_MINTEMP = "mintemp"
 CONF_MAXTEMP = "maxtemp"
 CONF_FILTER_LEVEL = "filter_level"
 
-
-
-DEPENDENCIES = ['esp32']
+DEPENDENCIES = ["i2c"]
+AUTO_LOAD = ["sensor"]
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640_app")
-#MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.PollingComponent)
-MLX90640 = mlx90640_ns.class_("MLX90640", cg.PollingComponent)
+MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.PollingComponent)
 CONFIG_SCHEMA = (
     cv.Schema({
       cv.GenerateID(): cv.declare_id(MLX90640),
-      cv.Required(CONF_SCL):int,
-      cv.Required(CONF_SDA): int,
-      cv.Required(CONF_FREQUENCY):int ,
-      cv.Required(CONF_I2C_ADDRESS):int ,
       cv.Required(CONF_MAXTEMP):int ,
       cv.Required(CONF_MINTEMP):int ,
       cv.Optional(CONF_REFRESH_RATE):int ,
@@ -65,21 +55,16 @@ CONFIG_SCHEMA = (
                     state_class=STATE_CLASS_MEASUREMENT,
                 ),
     }).extend(cv.polling_component_schema("60s"))
-    #.extend(i2c.i2c_device_schema(CONF_I2C_ADDR))
+    .extend(i2c.i2c_device_schema(0x33))
 )
-
 
 
 @coroutine_with_priority(45.0)
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    #var =  cg.new_Pvariable(config[CONF_ID])
-    #await cg.register_component(var, config)
-    #await i2c.register_i2c_device(var, config)
-    #cg.add(var.set_frequency(CONF_FREQUENCY))
-    #cg.add(var.set_sda(CONF_SDA))
-    #cg.add(var.set_scl(CONF_SCL))
+    await i2c.register_i2c_device(var, config)
+
     if CONF_MIN_TEMPERATURE in config:
         conf = config[CONF_MIN_TEMPERATURE]
         sens = await sensor.new_sensor(conf)
@@ -100,19 +85,6 @@ async def to_code(config):
         sens = await sensor.new_sensor(conf)
         cg.add(var.set_median_temperature_sensor(sens))
         
-    if CONF_I2C_ADDRESS in config:
-        addr = config[CONF_I2C_ADDRESS]
-        cg.add(var.set_addr(addr))
-    if CONF_SDA in config:
-        sda = config[CONF_SDA]
-        cg.add(var.set_sda(sda))
-    if CONF_SCL in config:
-        scl = config[CONF_SCL]
-        cg.add(var.set_scl(scl))
-    if CONF_FREQUENCY in config:
-        freq = config[CONF_FREQUENCY]
-        cg.add(var.set_frequency(freq))
-    
     if CONF_MINTEMP in config:
         min = config[CONF_MINTEMP]
         cg.add(var.set_mintemp(min))

@@ -15,45 +15,25 @@
 
 */
 #include "MLX90640_I2C_Driver.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
+#include "esphome/core/log.h"
 
 static const char *TAG = "MLX90640_I2C";
-static i2c_port_t i2c_port = I2C_NUM_0;
-static int i2c_sda_pin = GPIO_NUM_NC;
-static int i2c_scl_pin = GPIO_NUM_NC;
-static uint32_t i2c_frequency = 400000;
+static esphome::i2c::I2CDevice *mlx90640_i2c_device = nullptr;
 
-void MLX90640_I2CInit(i2c_port_t port, int sda, int scl, uint32_t frequency) {
-  i2c_port = port;
-  i2c_sda_pin = sda;
-  i2c_scl_pin = scl;
-  i2c_frequency = frequency;
-
-  i2c_config_t conf{};
-  conf.mode = I2C_MODE_MASTER;
-  conf.sda_io_num = static_cast<gpio_num_t>(sda);
-  conf.scl_io_num = static_cast<gpio_num_t>(scl);
-  conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.master.clk_speed = frequency;
-
-  esp_err_t err = i2c_param_config(i2c_port, &conf);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to configure I2C: %s", esp_err_to_name(err));
-    return;
-  }
-
-  err = i2c_driver_install(i2c_port, conf.mode, 0, 0, 0);
-  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-    ESP_LOGE(TAG, "Failed to install I2C driver: %s", esp_err_to_name(err));
-  }
+void MLX90640_I2CInit(esphome::i2c::I2CDevice *device) {
+  mlx90640_i2c_device = device;
 }
 
 //Read a number of words from startAddress. Store into Data array.
 //Returns 0 if successful, -1 if error
 int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned int nWordsRead,
                      uint16_t *data) {
+  if (mlx90640_i2c_device == nullptr) {
+    ESP_LOGE(TAG, "I2C device not initialized");
+    return -1;
+  }
+  (void) _deviceAddress;
+
   uint16_t bytesRemaining = nWordsRead * 2;
   uint16_t dataSpot = 0;
 
@@ -66,11 +46,9 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
     uint8_t reg[2] = {static_cast<uint8_t>(startAddress >> 8),
                       static_cast<uint8_t>(startAddress & 0xFF)};
     uint8_t buffer[I2C_BUFFER_LENGTH];
-    esp_err_t err = i2c_master_write_read_device(i2c_port, _deviceAddress, reg, sizeof(reg), buffer,
-                                                 numberOfBytesToRead, pdMS_TO_TICKS(100));
-    if (err != ESP_OK) {
-      ESP_LOGE(TAG, "I2C read failed: %s", esp_err_to_name(err));
-      return 0;
+    if (!mlx90640_i2c_device->write_read(reg, sizeof(reg), buffer, numberOfBytesToRead)) {
+      ESP_LOGE(TAG, "I2C read failed");
+      return -1;
     }
 
     for (uint16_t x = 0; x < numberOfBytesToRead / 2; x++) {
@@ -89,27 +67,23 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
 //Set I2C Freq, in kHz
 //MLX90640_I2CFreqSet(1000) sets frequency to 1MHz
 void MLX90640_I2CFreqSet(int freq) {
-  i2c_frequency = static_cast<uint32_t>(freq) * 1000U;
-  i2c_config_t conf{};
-  conf.mode = I2C_MODE_MASTER;
-  conf.sda_io_num = static_cast<gpio_num_t>(i2c_sda_pin);
-  conf.scl_io_num = static_cast<gpio_num_t>(i2c_scl_pin);
-  conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-  conf.master.clk_speed = i2c_frequency;
-  i2c_param_config(i2c_port, &conf);
+  (void) freq;
 }
 
 //Write two bytes to a two byte address
 int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_t data) {
+  if (mlx90640_i2c_device == nullptr) {
+    ESP_LOGE(TAG, "I2C device not initialized");
+    return -1;
+  }
+  (void) _deviceAddress;
+
   uint8_t buffer[4] = {static_cast<uint8_t>(writeAddress >> 8),
                        static_cast<uint8_t>(writeAddress & 0xFF),
                        static_cast<uint8_t>(data >> 8),
                        static_cast<uint8_t>(data & 0xFF)};
-  esp_err_t err =
-      i2c_master_write_to_device(i2c_port, _deviceAddress, buffer, sizeof(buffer), pdMS_TO_TICKS(100));
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "I2C write failed: %s", esp_err_to_name(err));
+  if (!mlx90640_i2c_device->write(buffer, sizeof(buffer))) {
+    ESP_LOGE(TAG, "I2C write failed");
     return -1;
   }
 
@@ -123,11 +97,10 @@ int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_
 }
 
 bool MLX90640_isConnected(uint8_t addr) {
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
-  i2c_master_stop(cmd);
-  esp_err_t err = i2c_master_cmd_begin(i2c_port, cmd, pdMS_TO_TICKS(100));
-  i2c_cmd_link_delete(cmd);
-  return err == ESP_OK;
+  if (mlx90640_i2c_device == nullptr) {
+    ESP_LOGE(TAG, "I2C device not initialized");
+    return false;
+  }
+  (void) addr;
+  return mlx90640_i2c_device->is_device_ready();
 }

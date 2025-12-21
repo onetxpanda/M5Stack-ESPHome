@@ -1,5 +1,5 @@
 #include "camera_mlx90640.h"
-#include "driver/i2c.h"
+#include "esphome/core/log.h"
 #include <cmath>
 
 
@@ -36,18 +36,16 @@ int max_cam_v    = 300;  // Spec in datasheet.  规范的数据表
 namespace esphome{
     namespace mlx90640_app{
         void MLX90640::setup(){
-            // Initialize the the sensor data 
-                ESP_LOGI(TAG, "SDA PIN %d ", this->sda_);
-                ESP_LOGI(TAG, "SCL PIN %d ", this->scl_);
-                ESP_LOGI(TAG, "I2C Frequency %d",  this->frequency_);
-                ESP_LOGI(TAG, "Address %d ", this->addr_);
-                MLX90640_address = this->addr_ ;
+            // Initialize the the sensor data
+                ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
+                ESP_LOGCONFIG(TAG, "Address 0x%02X", this->address_);
+                MLX90640_address = this->address_ ;
                 MINTEMP = this->mintemp_ ;
                 MAXTEMP = this->maxtemp_ ;
-                
-                ESP_LOGI(TAG, "Color MinTemp %d ", MINTEMP);
-                ESP_LOGI(TAG, "Color MaxTemp %d ", MAXTEMP);
-                MLX90640_I2CInit(I2C_NUM_0, this->sda_, this->scl_, this->frequency_);
+
+                ESP_LOGCONFIG(TAG, "Color MinTemp %d ", MINTEMP);
+                ESP_LOGCONFIG(TAG, "Color MaxTemp %d ", MAXTEMP);
+                MLX90640_I2CInit(this);
                 int status;
                 uint16_t eeMLX90640[832];  // 32 * 24 = 768
                 if(MLX90640_isConnected(MLX90640_address)){
@@ -85,12 +83,29 @@ namespace esphome{
                   SetRefreshRate = MLX90640_SetRefreshRate(MLX90640_address, 0x05);
                   ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
                 }
+                (void) SetRefreshRate;
                 
                 // Once params are extracted, we can release eeMLX90640 array.
                 // 一旦提取了参数，我们就可以释放eeMLX90640数组
                 }else{
                     ESP_LOGE(TAG, "The sensor is not connected");
                 }
+        }
+
+        void MLX90640::dump_config() {
+            ESP_LOGCONFIG(TAG, "MLX90640:");
+            ESP_LOGCONFIG(TAG, "  Address: 0x%02X", this->address_);
+            ESP_LOGCONFIG(TAG, "  Color MinTemp: %d", static_cast<int>(this->mintemp_));
+            ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
+            ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
+            if (this->refresh_rate_ > 0) {
+                ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_);
+            }
+            LOG_UPDATE_INTERVAL(this);
+            LOG_SENSOR("  ", "Min temperature", this->min_temperature_sensor_);
+            LOG_SENSOR("  ", "Max temperature", this->max_temperature_sensor_);
+            LOG_SENSOR("  ", "Mean temperature", this->mean_temperature_sensor_);
+            LOG_SENSOR("  ", "Median temperature", this->median_temperature_sensor_);
         }
 
         void MLX90640::filter_outlier_pixel(float *pixels_ , int pixel_size , float level){

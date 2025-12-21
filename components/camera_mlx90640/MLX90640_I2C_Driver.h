@@ -18,11 +18,11 @@
 #define _MLX90640_I2C_Driver_H_
 
 #include <stdint.h>
-#include "driver/i2c.h"
+#include "esphome/components/i2c/i2c.h"
 #define I2C_BUFFER_LENGTH 32
 
 
-void MLX90640_I2CInit(i2c_port_t port, int sda, int scl, uint32_t frequency);
+void MLX90640_I2CInit(esphome::i2c::I2CDevice *device);
 int MLX90640_I2CRead(uint8_t slaveAddr, unsigned int startAddress, unsigned int nWordsRead, uint16_t *data);
 int MLX90640_I2CWrite(uint8_t slaveAddr, unsigned int writeAddress, uint16_t data);
 void MLX90640_I2CFreqSet(int freq);
