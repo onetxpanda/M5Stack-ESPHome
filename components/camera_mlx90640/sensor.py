@@ -4,7 +4,6 @@ from esphome import pins
 from esphome.components import sensor, text_sensor, i2c
 from esphome.const import (
     CONF_ID,
-    CONF_TEMPERATURE,
     CONF_MIN_TEMPERATURE,
     CONF_MAX_TEMPERATURE,
     DEVICE_CLASS_TEMPERATURE,
@@ -36,12 +35,6 @@ CONFIG_SCHEMA = (
       cv.Optional(CONF_SDA): int,
       cv.Optional(CONF_FREQUENCY):int ,
       cv.Optional(CONF_I2C_ADDRESS):int ,
-      cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
-                unit_of_measurement=UNIT_CELSIUS,
-                accuracy_decimals=2,
-                device_class=DEVICE_CLASS_TEMPERATURE,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
       cv.Optional(CONF_MIN_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=2,
@@ -67,10 +60,6 @@ async def to_code(config):
     #cg.add(var.set_frequency(CONF_FREQUENCY))
     #cg.add(var.set_sda(CONF_SDA))
     #cg.add(var.set_scl(CONF_SCL))
-    if CONF_TEMPERATURE in config:
-        conf = config[CONF_TEMPERATURE]
-        sens = await text_sensor.new_text_sensor(conf)
-        cg.add(var.set_temperature_sensor(sens))
 
     if CONF_MIN_TEMPERATURE in config:
         conf = config[CONF_MIN_TEMPERATURE]
