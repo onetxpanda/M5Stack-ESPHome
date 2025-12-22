@@ -11,6 +11,7 @@ uint8_t MLX90640_address = 0x33;  // Default 7-bit unshifted address of the
 #define COLS   32
 #define ROWS   24
 float pixels[COLS * ROWS];
+uint16_t mlx90640_frame[834];
 uint8_t speed_setting = 2;  // High is 1 , Low is 2
 
 static const char * TAG = "MLX90640" ;
@@ -181,20 +182,20 @@ namespace esphome{
       void MLX90640::mlx_update(){
             for (uint8_t x = 0; x < speed_setting; x++)  // x < 2 Read both subpages
             {
-                uint16_t mlx90640Frame[834];
-                int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
+                int status = MLX90640_GetFrameData(MLX90640_address, mlx90640_frame);
                 if (status < 0) {
-                    ESP_LOGE(TAG,"GetFrame Error: %d",status);
+                    ESP_LOGE(TAG, "GetFrame Error: %d", status);
+                    dataValid = false;
                     return;
                 }
 
-                float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640_params);
+                float vdd = MLX90640_GetVdd(mlx90640_frame, &mlx90640_params);
                 (void) vdd;
-                float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640_params);
+                float Ta = MLX90640_GetTa(mlx90640_frame, &mlx90640_params);
                 float tr = Ta - TA_SHIFT;  // Reflected temperature based on the sensor ambient
                                     // temperature.  根据传感器环境温度反射温度
                 float emissivity = 0.95;
-                MLX90640_CalculateTo(mlx90640Frame, &mlx90640_params, emissivity, tr, pixels); // save pixels temp to array (pixels).
+                MLX90640_CalculateTo(mlx90640_frame, &mlx90640_params, emissivity, tr, pixels); // save pixels temp to array (pixels).
                                                                                                // 保存像素temp到数组(像素)
                 int mode_ = MLX90640_GetCurMode(MLX90640_address);
                 // amendment.  修正案
