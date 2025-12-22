@@ -57,8 +57,43 @@ namespace esphome{
                 }
 
                 status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640_params);
-                if (status != 0)  ESP_LOGE(TAG,"Parameter extraction failed");
-                
+                if (status != 0)
+                {
+                    switch (status)
+                    {
+                    case MLX90640_I2C_NACK_ERROR:
+                        ESP_LOGE(TAG, "Bad EE data");
+                        break;
+                    case MLX90640_I2C_WRITE_ERROR:
+                        ESP_LOGE(TAG, "Bad split data");
+                        break;
+                    case MLX90640_BROKEN_PIXELS_NUM_ERROR:
+                        ESP_LOGE(TAG, "Too many broken pixels");
+                        break;
+                    case MLX90640_OUTLIER_PIXELS_NUM_ERROR:
+                        ESP_LOGE(TAG, "Too many outlier pixels");
+                        break;
+                    case MLX90640_BAD_PIXELS_NUM_ERROR:
+                        ESP_LOGE(TAG, "Too many bad pixels");
+                        break;
+                    case MLX90640_ADJACENT_BAD_PIXELS_ERROR:
+                        ESP_LOGE(TAG, "Adjacent bad pixels");
+                        break;
+                    case MLX90640_EEPROM_DATA_ERROR:
+                        ESP_LOGE(TAG, "EEPROM data error");
+                        break;
+                    case MLX90640_FRAME_DATA_ERROR:
+                        ESP_LOGE(TAG, "Frame data error");
+                        break;
+                    case MLX90640_MEAS_TRIGGER_ERROR:
+                        ESP_LOGE(TAG, "Measurement trigger error");
+                        break;
+                    default:
+                        ESP_LOGE(TAG, "Unknown error");
+                        break;
+                    }
+                }
+
                 int SetRefreshRate;
                 // Setting MLX90640 device at slave address 0x33 to work with 16Hz refresh
                 // rate: 设置从地址0x33的MLX90640设备以16Hz刷新率工作:
