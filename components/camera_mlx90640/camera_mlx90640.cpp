@@ -184,7 +184,8 @@ namespace esphome{
                 uint16_t mlx90640Frame[834];
                 int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
                 if (status < 0) {
-                ESP_LOGE(TAG,"GetFrame Error: %d",status);
+                    ESP_LOGE(TAG,"GetFrame Error: %d",status);
+                    return;
                 }
 
                 float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640_params);
