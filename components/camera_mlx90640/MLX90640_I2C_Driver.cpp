@@ -49,7 +49,7 @@ int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned
     esphome::i2c::ErrorCode err = mlx90640_i2c_device->write_read(reg, sizeof(reg), buffer, numberOfBytesToRead);
     if (err != esphome::i2c::ErrorCode::ERROR_OK)
     {
-      ESP_LOGE(TAG, "I2C read failed: %d", );
+      ESP_LOGE(TAG, "I2C read failed: %d", (int)err);
       return -1;
     }
 
@@ -82,7 +82,7 @@ int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_
 
   if (err != esphome::i2c::ErrorCode::ERROR_OK)
   {
-    ESP_LOGE(TAG, "I2C write failed");
+    ESP_LOGE(TAG, "I2C write failed: %d", (int)err);
     return -1;
   }
 
