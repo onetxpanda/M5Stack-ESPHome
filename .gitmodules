@@ -1,0 +1,3 @@
+[submodule "lib/esphome"]
+	path = lib/esphome
+	url = https://github.com/esphome/esphome.git
