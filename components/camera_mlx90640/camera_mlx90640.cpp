@@ -1,237 +1,330 @@
 #include "camera_mlx90640.h"
-#include "esphome/core/log.h"
+
+#include <algorithm>
 #include <cmath>
 
+#include "esphome/core/application.h"
+#include "esphome/core/log.h"
 
-uint8_t MLX90640_address = 0x33;  // Default 7-bit unshifted address of the
-                                     // MLX90640.  MLX90640的默认7位未移位地址
-#define TA_SHIFT \
-    8  // Default shift for MLX90640 in open air.  MLX90640在户外的默认移位
+namespace esphome {
+namespace mlx90640 {
 
-#define COLS   32
-#define ROWS   24
-float pixels[COLS * ROWS];
-uint16_t mlx90640_frame[834];
-uint8_t speed_setting = 2;  // High is 1 , Low is 2
+static const char *const TAG = "MLX90640";
+static constexpr uint8_t SPEED_SETTING = 2;  // High is 1 , Low is 2
+static constexpr int TA_SHIFT = 8;           // Default shift for MLX90640 in open air
+static constexpr float MIN_CAM_V = -40.0f;   // Spec in datasheet
+static constexpr float MAX_CAM_V = 300.0f;   // Spec in datasheet
 
-static const char * TAG = "MLX90640" ;
-paramsMLX90640 mlx90640_params;
-bool dataValid = false ;
-float medianTemp ;
-float meanTemp ;
-
-
-
-// low range of the sensor (this will be blue on the screen).
-// 传感器的低量程(屏幕上显示为蓝色)
-int MINTEMP   = 24;   // For color mapping.  颜色映射
-float min_v     = 24;   // Value of current min temp.  当前最小温度的值
-int min_cam_v = -40;  // Spec in datasheet.  规范的数据表
-
-// high range of the sensor (this will be red on the screen).
-// 传感器的高量程(屏幕上显示为红色)
-int MAXTEMP      = 35;   // For color mapping.  颜色映射
-float max_v        = 35;   // Value of current max temp.  当前最大温度值
-int max_cam_v    = 300;  // Spec in datasheet.  规范的数据表
-
-namespace esphome{
-    namespace mlx90640{
-        void MLX90640::setup(){
-            // Initialize the the sensor data
-                ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
-                ESP_LOGCONFIG(TAG, "Address 0x%02X", this->address_);
-                MLX90640_address = this->address_ ;
-                MINTEMP = this->mintemp_ ;
-                MAXTEMP = this->maxtemp_ ;
-
-                ESP_LOGCONFIG(TAG, "Color MinTemp %d ", MINTEMP);
-                ESP_LOGCONFIG(TAG, "Color MaxTemp %d ", MAXTEMP);
-                MLX90640_I2CInit(this);
-                int status;
-                uint16_t eeMLX90640[832];  // 32 * 24 = 768
-
-                status = MLX90640_DumpEE(MLX90640_address, eeMLX90640);
-                if (status != 0) {
-                    ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
-                    this->mark_failed();
-                    return;
-                }
-
-                status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640_params);
-                if (status != 0)
-                {
-                    switch (status)
-                    {
-                    case MLX90640_I2C_NACK_ERROR:
-                        ESP_LOGE(TAG, "Bad EE data");
-                        break;
-                    case MLX90640_I2C_WRITE_ERROR:
-                        ESP_LOGE(TAG, "Bad split data");
-                        break;
-                    case MLX90640_BROKEN_PIXELS_NUM_ERROR:
-                        ESP_LOGE(TAG, "Too many broken pixels");
-                        break;
-                    case MLX90640_OUTLIER_PIXELS_NUM_ERROR:
-                        ESP_LOGE(TAG, "Too many outlier pixels");
-                        break;
-                    case MLX90640_BAD_PIXELS_NUM_ERROR:
-                        ESP_LOGE(TAG, "Too many bad pixels");
-                        break;
-                    case MLX90640_ADJACENT_BAD_PIXELS_ERROR:
-                        ESP_LOGE(TAG, "Adjacent bad pixels");
-                        break;
-                    case MLX90640_EEPROM_DATA_ERROR:
-                        ESP_LOGE(TAG, "EEPROM data error");
-                        break;
-                    case MLX90640_FRAME_DATA_ERROR:
-                        ESP_LOGE(TAG, "Frame data error");
-                        break;
-                    case MLX90640_MEAS_TRIGGER_ERROR:
-                        ESP_LOGE(TAG, "Measurement trigger error");
-                        break;
-                    default:
-                        ESP_LOGE(TAG, "Unknown error");
-                        break;
-                    }
-                }
-
-                int SetRefreshRate;
-                // Setting MLX90640 device at slave address 0x33 to work with 16Hz refresh
-                // rate: 设置从地址0x33的MLX90640设备以16Hz刷新率工作:
-                // 0x00 – 0.5Hz
-                // 0x01 – 1Hz
-                // 0x02 – 2Hz
-                // 0x03 – 4Hz
-                // 0x04 – 8Hz // OK
-                // 0x05 – 16Hz // OK
-                // 0x06 – 32Hz // Fail
-                // 0x07 – 64Hz
-                if(this->refresh_rate_){
-                  SetRefreshRate = MLX90640_SetRefreshRate(MLX90640_address, this->refresh_rate_);
-                  if(this->refresh_rate_==0x05){
-                      ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
-
-                  }else if(this->refresh_rate_==0x04){
-                    ESP_LOGI(TAG, "Refresh rate set to 8Hz ");
-                  }else{
-                    ESP_LOGI(TAG, "Refresh rate Not Valid ");
-                    SetRefreshRate = MLX90640_SetRefreshRate(MLX90640_address, 0x05);
-                  }
-                  
-                }else{
-                  SetRefreshRate = MLX90640_SetRefreshRate(MLX90640_address, 0x05);
-                  ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
-                }
-                (void) SetRefreshRate;
-                
-                // Once params are extracted, we can release eeMLX90640 array.
-                // 一旦提取了参数，我们就可以释放eeMLX90640数组
-        }
-
-        void MLX90640::dump_config() {
-            ESP_LOGCONFIG(TAG, "MLX90640:");
-            LOG_I2C_DEVICE(this);
-            if (this->is_failed())
-            {
-                ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
-            }
-            ESP_LOGCONFIG(TAG, "  Address: 0x%02X", this->address_);
-            ESP_LOGCONFIG(TAG, "  Color MinTemp: %d", static_cast<int>(this->mintemp_));
-            ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
-            ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
-            if (this->refresh_rate_ > 0) {
-                ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_);
-            }
-            LOG_UPDATE_INTERVAL(this);
-            LOG_SENSOR("  ", "Min temperature", this->min_temperature_sensor_);
-            LOG_SENSOR("  ", "Max temperature", this->max_temperature_sensor_);
-            LOG_SENSOR("  ", "Mean temperature", this->mean_temperature_sensor_);
-            LOG_SENSOR("  ", "Median temperature", this->median_temperature_sensor_);
-        }
-
-        void MLX90640::filter_outlier_pixel(float *pixels_ , int pixel_size , float level){
-            for(int i=1 ; i<pixel_size -1 ; i++){
-                if(std::fabs(pixels_[i]-pixels_[i-1])>= level && std::fabs((pixels_[i]-pixels_[i+1]))>= level ){
-                    pixels_[i] = (pixels_[i-1] + pixels_[i+1])/2.0 ;
-                }
-            }
-            // Check the zero index pixel
-            if(std::fabs(pixels_[0]-pixels_[1])>=level && std::fabs(pixels_[0]-pixels_[2])>=level){
-                pixels_[0] = (pixels_[1] +pixels_[2])/2.0 ;
-            }
-            // Check the zero index pixel
-            if(std::fabs(pixels_[pixel_size-1]-pixels_[pixel_size-2])>=level &&
-               std::fabs(pixels_[pixel_size-1]-pixels_[pixel_size-3])>=level){
-                pixels_[pixel_size-1] = (pixels_[pixel_size-2] +pixels_[pixel_size-3])/2.0 ;
-            }
-        }
-
-        void MLX90640::update()
-        {
-            //this->pixel_data_->publish_state(payload);
-            if(dataValid)
-            {
-                this->min_temperature_sensor_->publish_state(min_v);
-                this->max_temperature_sensor_->publish_state(max_v);
-                this->mean_temperature_sensor_->publish_state(meanTemp);
-                this->median_temperature_sensor_->publish_state(medianTemp);
-            }
-            this->mlx_update();
-        }
-
-      void MLX90640::mlx_update(){
-            for (uint8_t x = 0; x < speed_setting; x++)  // x < 2 Read both subpages
-            {
-                int status = MLX90640_GetFrameData(MLX90640_address, mlx90640_frame);
-                if (status < 0) {
-                    ESP_LOGE(TAG, "GetFrame Error: %d", status);
-                    dataValid = false;
-                    return;
-                }
-
-                float vdd = MLX90640_GetVdd(mlx90640_frame, &mlx90640_params);
-                (void) vdd;
-                float Ta = MLX90640_GetTa(mlx90640_frame, &mlx90640_params);
-                float tr = Ta - TA_SHIFT;  // Reflected temperature based on the sensor ambient
-                                    // temperature.  根据传感器环境温度反射温度
-                float emissivity = 0.95;
-                MLX90640_CalculateTo(mlx90640_frame, &mlx90640_params, emissivity, tr, pixels); // save pixels temp to array (pixels).
-                                                                                               // 保存像素temp到数组(像素)
-                int mode_ = MLX90640_GetCurMode(MLX90640_address);
-                // amendment.  修正案
-                MLX90640_BadPixelsCorrection((&mlx90640_params)->brokenPixels, pixels, mode_, &mlx90640_params);
-            }
-
-                filter_outlier_pixel(pixels,sizeof(pixels) / sizeof(pixels[0]), this->filter_level_ );
-                medianTemp = (pixels[165]+pixels[180]+pixels[176]+pixels[192]) / 4.0;
-                max_v      = MINTEMP;
-                min_v      = MAXTEMP;
-                // while(1);
-                float total =0 ;
-                for (int itemp = 0; itemp < sizeof(pixels) / sizeof(pixels[0]); itemp++) {
-                    if (pixels[itemp] > max_v) {
-                        max_v = pixels[itemp];
-                    }
-                    if (pixels[itemp] < min_v) {
-                        min_v = pixels[itemp];
-                    }
-                    total += pixels[itemp] ;
-                }
-                meanTemp = total/((sizeof(pixels) / sizeof(pixels[0])));
-
-                if (max_v > max_cam_v | max_v < min_cam_v) {
-                    ESP_LOGE(TAG, "MLX READING VALUE ERRORS");
-                    dataValid = false ;
-                } else {
-                    ESP_LOGI(TAG, "Min temperature : %.2f C ",min_v);
-                    ESP_LOGI(TAG, "Max temperature : %.2f C ",max_v);
-                    ESP_LOGI(TAG, "Mean temperature : %.2f C ",meanTemp);
-                    ESP_LOGI(TAG, "Median temperature : %.2f C ",medianTemp);
-                    dataValid = true ;
-                }
-      }
-        
-        
-
-    }
+/* ---------------- MLX90640CameraImageReader ---------------- */
+void MLX90640CameraImageReader::set_image(std::shared_ptr<camera::CameraImage> image) {
+  this->image_ = std::static_pointer_cast<MLX90640CameraImage>(image);
+  this->offset_ = 0;
 }
+
+size_t MLX90640CameraImageReader::available() const {
+  if (!this->image_)
+    return 0;
+  return this->image_->get_data_length() - this->offset_;
+}
+
+uint8_t *MLX90640CameraImageReader::peek_data_buffer() {
+  if (!this->image_)
+    return nullptr;
+  return this->image_->get_data_buffer() + this->offset_;
+}
+
+/* ---------------- MLX90640 ---------------- */
+void MLX90640::setup() {
+  ESP_LOGCONFIG(TAG, "Setting up MLX90640...");
+  ESP_LOGCONFIG(TAG, "Address 0x%02X", this->address_);
+  ESP_LOGCONFIG(TAG, "Color MinTemp %d ", static_cast<int>(this->mintemp_));
+  ESP_LOGCONFIG(TAG, "Color MaxTemp %d ", static_cast<int>(this->maxtemp_));
+
+  this->encoder_output_.set_buffer_size(this->encoder_buffer_size_);
+#ifdef USE_ESP32_CAMERA_JPEG_ENCODER
+  this->encoder_ = std::make_unique<camera_encoder::ESP32CameraJPEGEncoder>(this->encoder_quality_,
+                                                                            &this->encoder_output_);
+  static_cast<camera_encoder::ESP32CameraJPEGEncoder *>(this->encoder_.get())
+      ->set_buffer_expand_size(this->encoder_buffer_expand_size_);
+#endif
+
+  this->set_interval("mlx90640_update", this->update_interval_, [this]() { this->sensor_update_requested_ = true; });
+
+  MLX90640_I2CInit(this);
+  int status = 0;
+  uint16_t ee_data[832];
+
+  status = MLX90640_DumpEE(this->address_, ee_data);
+  if (status != 0) {
+    ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
+    this->mark_failed();
+    return;
+  }
+
+  status = MLX90640_ExtractParameters(ee_data, &this->mlx90640_params_);
+  if (status != 0) {
+    switch (status) {
+      case MLX90640_I2C_NACK_ERROR:
+        ESP_LOGE(TAG, "Bad EE data");
+        break;
+      case MLX90640_I2C_WRITE_ERROR:
+        ESP_LOGE(TAG, "Bad split data");
+        break;
+      case MLX90640_BROKEN_PIXELS_NUM_ERROR:
+        ESP_LOGE(TAG, "Too many broken pixels");
+        break;
+      case MLX90640_OUTLIER_PIXELS_NUM_ERROR:
+        ESP_LOGE(TAG, "Too many outlier pixels");
+        break;
+      case MLX90640_BAD_PIXELS_NUM_ERROR:
+        ESP_LOGE(TAG, "Too many bad pixels");
+        break;
+      case MLX90640_ADJACENT_BAD_PIXELS_ERROR:
+        ESP_LOGE(TAG, "Adjacent bad pixels");
+        break;
+      case MLX90640_EEPROM_DATA_ERROR:
+        ESP_LOGE(TAG, "EEPROM data error");
+        break;
+      case MLX90640_FRAME_DATA_ERROR:
+        ESP_LOGE(TAG, "Frame data error");
+        break;
+      case MLX90640_MEAS_TRIGGER_ERROR:
+        ESP_LOGE(TAG, "Measurement trigger error");
+        break;
+      default:
+        ESP_LOGE(TAG, "Unknown error");
+        break;
+    }
+    this->mark_failed();
+    return;
+  }
+
+  int set_refresh_rate;
+  if (this->refresh_rate_) {
+    set_refresh_rate = MLX90640_SetRefreshRate(this->address_, this->refresh_rate_);
+    if (this->refresh_rate_ == 0x05) {
+      ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
+    } else if (this->refresh_rate_ == 0x04) {
+      ESP_LOGI(TAG, "Refresh rate set to 8Hz ");
+    } else {
+      ESP_LOGI(TAG, "Refresh rate Not Valid ");
+      set_refresh_rate = MLX90640_SetRefreshRate(this->address_, 0x05);
+    }
+
+  } else {
+    set_refresh_rate = MLX90640_SetRefreshRate(this->address_, 0x05);
+    ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
+  }
+  (void) set_refresh_rate;
+
+  this->sensor_update_requested_ = true;
+}
+
+void MLX90640::dump_config() {
+  ESP_LOGCONFIG(TAG, "MLX90640:");
+  LOG_I2C_DEVICE(this);
+  if (this->is_failed()) {
+    ESP_LOGE(TAG, ESP_LOG_MSG_COMM_FAIL);
+    return;
+  }
+  ESP_LOGCONFIG(TAG, "  Address: 0x%02X", this->address_);
+  ESP_LOGCONFIG(TAG, "  Color MinTemp: %d", static_cast<int>(this->mintemp_));
+  ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
+  ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
+  ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ > 0 ? this->refresh_rate_ : 0x05);
+  ESP_LOGCONFIG(TAG, "  Update interval: %u ms", this->update_interval_);
+  ESP_LOGCONFIG(TAG, "  JPEG quality: %u", this->encoder_quality_);
+  ESP_LOGCONFIG(TAG, "  JPEG buffer size: %u", static_cast<unsigned>(this->encoder_buffer_size_));
+  ESP_LOGCONFIG(TAG, "  JPEG buffer expand size: %u", static_cast<unsigned>(this->encoder_buffer_expand_size_));
+  LOG_SENSOR("  ", "Min temperature", this->min_temperature_sensor_);
+  LOG_SENSOR("  ", "Max temperature", this->max_temperature_sensor_);
+  LOG_SENSOR("  ", "Mean temperature", this->mean_temperature_sensor_);
+  LOG_SENSOR("  ", "Median temperature", this->median_temperature_sensor_);
+}
+
+void MLX90640::loop() {
+  const uint32_t now = App.get_loop_component_start_time();
+
+  if (this->current_image_ && this->current_image_.use_count() == 1) {
+    this->current_image_.reset();
+  }
+
+  if (this->stream_requesters_ && now - this->last_frame_ms_ >= this->frame_interval_ms_()) {
+    this->single_requesters_ |= this->stream_requesters_;
+  }
+
+  if (!this->sensor_update_requested_ && !this->has_requested_image_())
+    return;
+
+  if (this->current_image_)
+    return;
+
+  if (!this->capture_frame_()) {
+    this->sensor_update_requested_ = false;
+    this->single_requesters_ = 0;
+    return;
+  }
+
+  if (this->sensor_update_requested_) {
+    this->publish_sensors_();
+    this->sensor_update_requested_ = false;
+  }
+
+  if (this->has_requested_image_()) {
+    if (this->encode_frame_(this->single_requesters_ | this->stream_requesters_)) {
+      this->last_frame_ms_ = now;
+    }
+    this->single_requesters_ = 0;
+  }
+}
+
+void MLX90640::start_stream(camera::CameraRequester requester) {
+  for (auto *listener : this->listeners_) {
+    listener->on_stream_start();
+  }
+  this->stream_requesters_ |= (1U << requester);
+}
+
+void MLX90640::stop_stream(camera::CameraRequester requester) {
+  for (auto *listener : this->listeners_) {
+    listener->on_stream_stop();
+  }
+  this->stream_requesters_ &= ~(1U << requester);
+}
+
+void MLX90640::filter_outlier_pixel_(float *pixels, int pixel_size, float level) {
+  for (int i = 1; i < pixel_size - 1; i++) {
+    if (std::fabs(pixels[i] - pixels[i - 1]) >= level && std::fabs((pixels[i] - pixels[i + 1])) >= level) {
+      pixels[i] = (pixels[i - 1] + pixels[i + 1]) / 2.0f;
+    }
+  }
+  if (std::fabs(pixels[0] - pixels[1]) >= level && std::fabs(pixels[0] - pixels[2]) >= level) {
+    pixels[0] = (pixels[1] + pixels[2]) / 2.0f;
+  }
+  if (std::fabs(pixels[pixel_size - 1] - pixels[pixel_size - 2]) >= level &&
+      std::fabs(pixels[pixel_size - 1] - pixels[pixel_size - 3]) >= level) {
+    pixels[pixel_size - 1] = (pixels[pixel_size - 2] + pixels[pixel_size - 3]) / 2.0f;
+  }
+}
+
+bool MLX90640::capture_frame_() {
+  for (uint8_t i = 0; i < SPEED_SETTING; i++) {
+    int status = MLX90640_GetFrameData(this->address_, this->frame_buffer_.data());
+    if (status < 0) {
+      ESP_LOGE(TAG, "GetFrame Error: %d", status);
+      this->data_valid_ = false;
+      return false;
+    }
+
+    float vdd = MLX90640_GetVdd(this->frame_buffer_.data(), &this->mlx90640_params_);
+    (void) vdd;
+    float ta = MLX90640_GetTa(this->frame_buffer_.data(), &this->mlx90640_params_);
+    float tr = ta - TA_SHIFT;
+    float emissivity = 0.95f;
+    MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
+    int mode = MLX90640_GetCurMode(this->address_);
+    MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), mode, &this->mlx90640_params_);
+  }
+
+  this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
+  this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
+  this->max_v_ = this->mintemp_;
+  this->min_v_ = this->maxtemp_;
+  float total = 0.0f;
+  for (float temperature : this->pixels_) {
+    if (temperature > this->max_v_) {
+      this->max_v_ = temperature;
+    }
+    if (temperature < this->min_v_) {
+      this->min_v_ = temperature;
+    }
+    total += temperature;
+  }
+  this->mean_temp_ = total / PIXEL_COUNT;
+
+  if (this->max_v_ > MAX_CAM_V || this->max_v_ < MIN_CAM_V) {
+    ESP_LOGE(TAG, "MLX READING VALUE ERRORS");
+    this->data_valid_ = false;
+    return false;
+  }
+  this->data_valid_ = true;
+
+  const float span = std::max(this->maxtemp_ - this->mintemp_, 1.0f);
+  uint8_t *pixel_data = this->pixel_buffer_.get_data_buffer();
+  for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
+    float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
+    float scaled = (clamped - this->mintemp_) / span;
+    pixel_data[idx] = static_cast<uint8_t>(std::roundf(scaled * 255.0f));
+  }
+
+  return true;
+}
+
+bool MLX90640::encode_frame_(uint8_t requesters) {
+#ifdef USE_ESP32_CAMERA_JPEG_ENCODER
+  if (this->encoder_ == nullptr) {
+    ESP_LOGE(TAG, "JPEG encoder not configured");
+    return false;
+  }
+  camera::EncoderError error;
+  do {
+    error = this->encoder_->encode_pixels(&this->image_spec_, &this->pixel_buffer_);
+    if (error == camera::ENCODER_ERROR_SKIP_FRAME)
+      return false;
+    if (error == camera::ENCODER_ERROR_CONFIGURATION) {
+      this->mark_failed(LOG_STR("Failed to encode frame."));
+      return false;
+    }
+  } while (error == camera::ENCODER_ERROR_RETRY_FRAME);
+
+  this->current_image_ = std::make_shared<MLX90640CameraImage>(&this->encoder_output_, requesters);
+  for (auto *listener : this->listeners_) {
+    listener->on_camera_image(this->current_image_);
+  }
+  return true;
+#else
+  (void) requesters;
+  ESP_LOGE(TAG, "ESP32 camera JPEG encoder is not enabled");
+  return false;
+#endif
+}
+
+void MLX90640::publish_sensors_() {
+  if (!this->data_valid_)
+    return;
+
+  if (this->min_temperature_sensor_ != nullptr)
+    this->min_temperature_sensor_->publish_state(this->min_v_);
+  if (this->max_temperature_sensor_ != nullptr)
+    this->max_temperature_sensor_->publish_state(this->max_v_);
+  if (this->mean_temperature_sensor_ != nullptr)
+    this->mean_temperature_sensor_->publish_state(this->mean_temp_);
+  if (this->median_temperature_sensor_ != nullptr)
+    this->median_temperature_sensor_->publish_state(this->median_temp_);
+}
+
+uint32_t MLX90640::frame_interval_ms_() const {
+  switch (this->refresh_rate_) {
+    case 0x00:
+      return 2000;
+    case 0x01:
+      return 1000;
+    case 0x02:
+      return 500;
+    case 0x03:
+      return 250;
+    case 0x04:
+      return 125;
+    case 0x05:
+      return 63;
+    case 0x06:
+      return 32;
+    case 0x07:
+      return 16;
+    default:
+      return 63;
+  }
+}
+
+}  // namespace mlx90640
+}  // namespace esphome
