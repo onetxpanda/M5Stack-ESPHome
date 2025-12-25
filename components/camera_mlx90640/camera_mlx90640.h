@@ -1,49 +1,129 @@
-#ifndef __MLX90640__
-#define __MLX90640__
-#include <esphome.h>
+#pragma once
+
+#include <array>
+#include <memory>
+#include <vector>
+
+#include "esphome/components/camera/buffer_impl.h"
+#include "esphome/components/camera/camera.h"
+#include "esphome/components/camera_encoder/encoder_buffer_impl.h"
+#include "esphome/components/camera_encoder/esp32_camera_jpeg_encoder.h"
 #include "esphome/components/i2c/i2c.h"
-#include "esphome/core/component.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/core/component.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 
-
 namespace esphome {
-    namespace mlx90640{
-         //class MLXDriver ;
-         //class MLXApi ;
+namespace mlx90640 {
 
-         class MLX90640: public i2c::I2CDevice, public PollingComponent {
-              private:
-                float mintemp_{24.0f};
-                float maxtemp_{35.0f};
-                int refresh_rate_ = -1 ;
-                float filter_level_= 10.0 ;
-                sensor::Sensor *min_temperature_sensor_{nullptr} ;
-                sensor::Sensor *max_temperature_sensor_{nullptr};
-                sensor::Sensor *mean_temperature_sensor_{nullptr};
-                sensor::Sensor *median_temperature_sensor_{nullptr};
-              public:
-                float get_setup_priority() const override { return setup_priority::LATE; }
-                void setup() override ;
-                void dump_config() override;
-                void update() override ;
-                void mlx_update() ;
-                void set_min_temperature_sensor(sensor::Sensor *ts){this->min_temperature_sensor_ = ts;}
-                void set_max_temperature_sensor(sensor::Sensor *ts){this->max_temperature_sensor_= ts;};
-                void set_mean_temperature_sensor(sensor::Sensor *ts){this->mean_temperature_sensor_= ts;};
-                void set_median_temperature_sensor(sensor::Sensor *ts){this->median_temperature_sensor_= ts;};
-                void set_mintemp(float min ){this->mintemp_ = min ;}
-                void set_maxtemp(float max ){this->maxtemp_ = max ;}
-                void set_refresh_rate(int refresh){this->refresh_rate_ = refresh;}
-                
-                // filtering function
-                void set_filter_level(float level){this->filter_level_ = level ;}
-                void filter_outlier_pixel(float *pixels , int size , float level);
-               
-        };
-    }
-}
+static const uint8_t MLX90640_ADDRESS_DEFAULT = 0x33;
 
+class MLX90640CameraImage : public camera::CameraImage {
+ public:
+  MLX90640CameraImage(camera_encoder::EncoderBufferImpl *buffer, uint8_t requesters)
+      : buffer_(buffer), requesters_(requesters) {}
 
-#endif
+  uint8_t *get_data_buffer() override { return this->buffer_->get_data(); }
+  size_t get_data_length() override { return this->buffer_->get_size(); }
+  bool was_requested_by(camera::CameraRequester requester) const override {
+    return (this->requesters_ & (1U << requester)) != 0;
+  }
+
+ protected:
+  camera_encoder::EncoderBufferImpl *buffer_;
+  uint8_t requesters_;
+};
+
+class MLX90640CameraImageReader : public camera::CameraImageReader {
+ public:
+  void set_image(std::shared_ptr<camera::CameraImage> image) override;
+  size_t available() const override;
+  uint8_t *peek_data_buffer() override;
+  void consume_data(size_t consumed) override { this->offset_ += consumed; }
+  void return_image() override { this->image_.reset(); }
+
+ protected:
+  std::shared_ptr<MLX90640CameraImage> image_;
+  size_t offset_{0};
+};
+
+class MLX90640 : public i2c::I2CDevice, public camera::Camera {
+ public:
+  float get_setup_priority() const override { return setup_priority::LATE; }
+  void setup() override;
+  void dump_config() override;
+  void loop() override;
+
+  void set_min_temperature_sensor(sensor::Sensor *ts) { this->min_temperature_sensor_ = ts; }
+  void set_max_temperature_sensor(sensor::Sensor *ts) { this->max_temperature_sensor_ = ts; }
+  void set_mean_temperature_sensor(sensor::Sensor *ts) { this->mean_temperature_sensor_ = ts; }
+  void set_median_temperature_sensor(sensor::Sensor *ts) { this->median_temperature_sensor_ = ts; }
+  void set_mintemp(float min) { this->mintemp_ = min; }
+  void set_maxtemp(float max) { this->maxtemp_ = max; }
+  void set_refresh_rate(int refresh) { this->refresh_rate_ = refresh; }
+  void set_filter_level(float level) { this->filter_level_ = level; }
+  void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
+  void set_encoder_quality(uint8_t quality) { this->encoder_quality_ = quality; }
+  void set_encoder_buffer_size(size_t size) { this->encoder_buffer_size_ = size; }
+  void set_encoder_buffer_expand_size(size_t size) { this->encoder_buffer_expand_size_ = size; }
+
+  // Camera interface
+  void add_listener(camera::CameraListener *listener) override { this->listeners_.push_back(listener); }
+  camera::CameraImageReader *create_image_reader() override { return new MLX90640CameraImageReader; }
+  void request_image(camera::CameraRequester requester) override { this->single_requesters_ |= (1U << requester); }
+  void start_stream(camera::CameraRequester requester) override;
+  void stop_stream(camera::CameraRequester requester) override;
+
+ protected:
+  static constexpr uint8_t COLS = 32;
+  static constexpr uint8_t ROWS = 24;
+  static constexpr size_t PIXEL_COUNT = COLS * ROWS;
+
+  void filter_outlier_pixel_(float *pixels, int size, float level);
+  bool capture_frame_();
+  bool encode_frame_(uint8_t requesters);
+  void publish_sensors_();
+  bool has_requested_image_() const { return this->single_requesters_ || this->stream_requesters_; }
+  uint32_t frame_interval_ms_() const;
+
+  float mintemp_{24.0f};
+  float maxtemp_{35.0f};
+  int refresh_rate_{-1};
+  float filter_level_{10.0f};
+  uint32_t update_interval_{60000};
+
+  sensor::Sensor *min_temperature_sensor_{nullptr};
+  sensor::Sensor *max_temperature_sensor_{nullptr};
+  sensor::Sensor *mean_temperature_sensor_{nullptr};
+  sensor::Sensor *median_temperature_sensor_{nullptr};
+
+  paramsMLX90640 mlx90640_params_{};
+  std::array<float, PIXEL_COUNT> pixels_{};
+  std::array<uint16_t, 834> frame_buffer_{};
+
+  float min_v_{24.0f};
+  float max_v_{35.0f};
+  float mean_temp_{0.0f};
+  float median_temp_{0.0f};
+  bool data_valid_{false};
+  bool sensor_update_requested_{false};
+
+  camera::CameraImageSpec image_spec_{COLS, ROWS, camera::PIXEL_FORMAT_GRAYSCALE};
+  camera::BufferImpl pixel_buffer_{&image_spec_};
+  camera_encoder::EncoderBufferImpl encoder_output_{};
+  std::unique_ptr<camera::Encoder> encoder_{};
+  uint8_t encoder_quality_{80};
+  size_t encoder_buffer_size_{4096};
+  size_t encoder_buffer_expand_size_{1024};
+
+  std::vector<camera::CameraListener *> listeners_;
+  std::shared_ptr<MLX90640CameraImage> current_image_{};
+  uint8_t stream_requesters_{0};
+  uint8_t single_requesters_{0};
+  uint32_t last_frame_ms_{0};
+};
+
+}  // namespace mlx90640
+}  // namespace esphome
+
