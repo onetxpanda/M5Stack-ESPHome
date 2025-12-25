@@ -6,7 +6,6 @@ from esphome.core import coroutine_with_priority
 from esphome.const import (
     CONF_BUFFER_SIZE,
     CONF_ID,
-    CONF_JPEG_QUALITY,
     CONF_MAX_TEMPERATURE,
     CONF_MIN_TEMPERATURE,
     CONF_NAME,
@@ -24,6 +23,7 @@ CONF_MINTEMP = "mintemp"
 CONF_MAXTEMP = "maxtemp"
 CONF_FILTER_LEVEL = "filter_level"
 CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"
+CONF_JPEG_QUALITY = "jpeg_quality"
 
 DEPENDENCIES = ["i2c", "esp32"]
 AUTO_LOAD = ["sensor", "camera"]
