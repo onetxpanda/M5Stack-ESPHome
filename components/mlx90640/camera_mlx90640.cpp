@@ -199,6 +199,37 @@ void MLX90640::filter_outlier_pixel_(float *pixels, int pixel_size, float level)
   }
 }
 
+// Iron colormap: black → purple → red → orange → yellow → white
+static void iron_colormap(uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
+  struct Point { uint8_t pos, r, g, b; };
+  static constexpr Point kPoints[] = {
+    {  0,   0,   0,   0},
+    { 32,  74,   0,  85},
+    { 64, 148,   0, 170},
+    { 96, 196,   0,  85},
+    {128, 220,   0,   0},
+    {160, 255, 110,   0},
+    {192, 255, 210,   0},
+    {224, 253, 252, 124},
+    {255, 255, 255, 255},
+  };
+  static constexpr size_t N = sizeof(kPoints) / sizeof(kPoints[0]);
+  for (size_t i = 0; i < N - 1; i++) {
+    if (v <= kPoints[i + 1].pos) {
+      int16_t dr = (int16_t) kPoints[i + 1].r - (int16_t) kPoints[i].r;
+      int16_t dg = (int16_t) kPoints[i + 1].g - (int16_t) kPoints[i].g;
+      int16_t db = (int16_t) kPoints[i + 1].b - (int16_t) kPoints[i].b;
+      uint16_t frac = v - kPoints[i].pos;
+      uint16_t dspan = kPoints[i + 1].pos - kPoints[i].pos;
+      r = (uint8_t) ((int16_t) kPoints[i].r + dr * frac / dspan);
+      g = (uint8_t) ((int16_t) kPoints[i].g + dg * frac / dspan);
+      b = (uint8_t) ((int16_t) kPoints[i].b + db * frac / dspan);
+      return;
+    }
+  }
+  r = 255; g = 255; b = 255;
+}
+
 bool MLX90640::capture_frame_() {
   for (uint8_t i = 0; i < SPEED_SETTING; i++) {
     int status = MLX90640_GetFrameData(this->address_, this->frame_buffer_.data());
@@ -246,7 +277,13 @@ bool MLX90640::capture_frame_() {
   for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
     float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
     float scaled = (clamped - this->mintemp_) / span;
-    pixel_data[idx] = static_cast<uint8_t>(std::roundf(scaled * 255.0f));
+    uint8_t v = static_cast<uint8_t>(std::roundf(scaled * 255.0f));
+    uint8_t r, g, b;
+    iron_colormap(v, r, g, b);
+    // PIXEL_FORMAT_BGR888: bytes stored as B, G, R
+    pixel_data[idx * 3 + 0] = b;
+    pixel_data[idx * 3 + 1] = g;
+    pixel_data[idx * 3 + 2] = r;
   }
 
   return true;
