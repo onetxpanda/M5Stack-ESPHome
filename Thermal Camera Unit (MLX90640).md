@@ -2,57 +2,45 @@
 
 https://shop.m5stack.com/products/thermal-camera
 
+Add the external component to your ESPHome YAML:
 
-Under your "esphome" section of your yaml, you'll need to add some additional includes / libraries:
-<pre>
-esphome:
-  name: "espatom-thermalcamera"
-  libraries:
-    - FS
-    - Wire
-    - SPIFFS
-</pre>
-
-Then you can add the main configuration for the unit:
-<pre>
+```yaml
 external_components:
   - source:
       type: git
-      url: https://github.com/chill-Division/M5Stack-ESPHome/
-      ref: main
-    components: camera_mlx90640
+      url: https://github.com/onetxpanda/M5Stack-ESPHome/
+      ref: native
+    components: [mlx90640]
+```
 
-# This is neccessary to load the text_sensor library, can be left empty though
-text_sensor:
+Then configure the component:
 
-# The Thermal Camera sensor itself
-sensor:
-camera_mlx90640:
+```yaml
+mlx90640:
+  name: "Thermal Camera"
   id: thermal_cam
   update_interval: 5s
-  sda: 26  # I2C SDA PIN
-  scl: 32  # I2C SCL PIN
-  frequency: 400000  # I2C Clock Frequency
-  address: 0x33 # MLX90640 Address
-  mintemp: 15 # Minimal temperature for color mapping
-  maxtemp: 40 # Maximal temperature for color mapping
-  refresh_rate: 0x04 # 0x05 For 16Hz or 0x04 for 8Hz
+  i2c_id: bus_a
+  address: 0x33
+  mintemp: 15   # Lower bound for colour mapping (°C)
+  maxtemp: 40   # Upper bound for colour mapping (°C)
+  refresh_rate: 4  # 0=0.5Hz 1=1Hz 2=2Hz 3=4Hz 4=8Hz 5=16Hz 6=32Hz 7=64Hz
   min_temperature:
-      name: "MLX90640 Min temp"
+    name: "MLX90640 Min Temp"
   max_temperature:
-      name: "MLX90640 Max temp"
+    name: "MLX90640 Max Temp"
   mean_temperature:
-      name: "MLX90640 Mean temp"
+    name: "MLX90640 Mean Temp"
   median_temperature:
-      name: "MLX90640 Median temperature"
+    name: "MLX90640 Median Temp"
+```
 
-web_server:
-  port: 80
-</pre>
+The component integrates with ESPHome's native camera API and is accessible through the ESPHome dashboard and Home Assistant. To also expose a JPEG snapshot or MJPEG stream over HTTP, add the `esp32_camera_web_server` component:
 
-You can also browse to the device with the URL:
-<pre>/thermal-camera</pre>
-It will draw a bmp image (You'll need to zoom right in) of the heatmap the camera can see:
-![image](https://github.com/Chill-Division/M5Stack-ESPHome/assets/162461/8b2eca54-a286-4f0d-8359-084e0a500b2d)
-
-Note: This is a BMP image if you save it directly
+```yaml
+esp32_camera_web_server:
+  - port: 8080
+    mode: stream
+  - port: 8081
+    mode: snapshot
+```
