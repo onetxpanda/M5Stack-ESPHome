@@ -35,10 +35,10 @@ CONFIG_SCHEMA = (
         {
             cv.GenerateID(): cv.declare_id(MLX90640),
             cv.Required(CONF_NAME): cv.string_strict,
-            cv.Required(CONF_MAXTEMP): int,
-            cv.Required(CONF_MINTEMP): int,
-            cv.Optional(CONF_REFRESH_RATE): int,
-            cv.Optional(CONF_FILTER_LEVEL): float,
+            cv.Required(CONF_MAXTEMP): cv.float_,
+            cv.Required(CONF_MINTEMP): cv.float_,
+            cv.Optional(CONF_REFRESH_RATE): cv.int_range(min=0, max=7),
+            cv.Optional(CONF_FILTER_LEVEL): cv.float_,
             cv.Optional(CONF_JPEG_QUALITY, default=80): cv.int_range(min=1, max=100),
             cv.Optional(CONF_BUFFER_SIZE, default=4096): cv.int_range(min=1024, max=2 * 1024 * 1024),
             cv.Optional(CONF_BUFFER_EXPAND_SIZE, default=1024): cv.int_range(
