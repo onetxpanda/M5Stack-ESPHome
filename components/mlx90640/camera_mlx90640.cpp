@@ -139,6 +139,12 @@ void MLX90640::loop() {
     this->single_requesters_ |= this->stream_requesters_;
   }
 
+  // Piggyback an IDLE camera frame on each sensor update so HA receives periodic images
+  // without needing to explicitly request a stream first.
+  if (this->sensor_update_requested_) {
+    this->single_requesters_ |= (1U << camera::IDLE);
+  }
+
   if (!this->sensor_update_requested_ && !this->has_requested_image_())
     return;
 
