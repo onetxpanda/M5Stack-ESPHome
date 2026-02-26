@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import i2c, sensor
+from esphome.components import i2c, sensor, socket
 from esphome.components.esp32 import add_idf_component
 from esphome.core import coroutine_with_priority
 from esphome.const import (
@@ -26,7 +26,7 @@ CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"
 CONF_JPEG_QUALITY = "jpeg_quality"
 
 DEPENDENCIES = ["i2c", "esp32"]
-AUTO_LOAD = ["sensor", "camera", "camera_encoder"]
+AUTO_LOAD = ["sensor", "camera", "camera_encoder", "socket"]
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
 MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.Component, cg.EntityBase)
@@ -78,6 +78,7 @@ CONFIG_SCHEMA = (
 @coroutine_with_priority(45.0)
 async def to_code(config):
     cg.add_define("USE_CAMERA")
+    socket.require_wake_loop_threadsafe()
     cg.add_define("USE_ESP32_CAMERA_JPEG_ENCODER")
     add_idf_component(name="espressif/esp32-camera", ref="2.1.1")
 
