@@ -26,7 +26,7 @@ CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"
 CONF_JPEG_QUALITY = "jpeg_quality"
 
 DEPENDENCIES = ["i2c", "esp32"]
-AUTO_LOAD = ["sensor", "camera"]
+AUTO_LOAD = ["sensor", "camera", "camera_encoder"]
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
 MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.Component, cg.EntityBase)
