@@ -99,23 +99,9 @@ void MLX90640::setup() {
     return;
   }
 
-  int set_refresh_rate;
-  if (this->refresh_rate_) {
-    set_refresh_rate = MLX90640_SetRefreshRate(this->address_, this->refresh_rate_);
-    if (this->refresh_rate_ == 0x05) {
-      ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
-    } else if (this->refresh_rate_ == 0x04) {
-      ESP_LOGI(TAG, "Refresh rate set to 8Hz ");
-    } else {
-      ESP_LOGI(TAG, "Refresh rate Not Valid ");
-      set_refresh_rate = MLX90640_SetRefreshRate(this->address_, 0x05);
-    }
-
-  } else {
-    set_refresh_rate = MLX90640_SetRefreshRate(this->address_, 0x05);
-    ESP_LOGI(TAG, "Refresh rate set to 16Hz ");
-  }
-  (void) set_refresh_rate;
+  uint8_t refresh_rate = (this->refresh_rate_ >= 0) ? static_cast<uint8_t>(this->refresh_rate_) : 0x05;
+  MLX90640_SetRefreshRate(this->address_, refresh_rate);
+  ESP_LOGI(TAG, "Refresh rate register set to 0x%02X", refresh_rate);
 
   this->sensor_update_requested_ = true;
 }
@@ -131,7 +117,7 @@ void MLX90640::dump_config() {
   ESP_LOGCONFIG(TAG, "  Color MinTemp: %d", static_cast<int>(this->mintemp_));
   ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
   ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
-  ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ > 0 ? this->refresh_rate_ : 0x05);
+  ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ >= 0 ? this->refresh_rate_ : 0x05);
   ESP_LOGCONFIG(TAG, "  Update interval: %u ms", this->update_interval_);
   ESP_LOGCONFIG(TAG, "  JPEG quality: %u", this->encoder_quality_);
   ESP_LOGCONFIG(TAG, "  JPEG buffer size: %u", static_cast<unsigned>(this->encoder_buffer_size_));
