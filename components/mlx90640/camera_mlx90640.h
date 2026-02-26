@@ -109,7 +109,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   bool data_valid_{false};
   bool sensor_update_requested_{false};
 
-  camera::CameraImageSpec image_spec_{COLS, ROWS, camera::PIXEL_FORMAT_GRAYSCALE};
+  camera::CameraImageSpec image_spec_{COLS, ROWS, camera::PIXEL_FORMAT_BGR888};
   camera::BufferImpl pixel_buffer_{&image_spec_};
   camera_encoder::EncoderBufferImpl encoder_output_{};
   std::unique_ptr<camera::Encoder> encoder_{};
