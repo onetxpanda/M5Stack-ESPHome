@@ -10,6 +10,7 @@
 #include "esphome/components/camera_encoder/esp32_camera_jpeg_encoder.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/core/color.h"
 #include "esphome/core/component.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
@@ -75,9 +76,14 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   void start_stream(camera::CameraRequester requester) override;
   void stop_stream(camera::CameraRequester requester) override;
 
- protected:
+  // Display accessor API
   static constexpr uint8_t COLS = 32;
   static constexpr uint8_t ROWS = 24;
+  bool is_data_valid() const { return this->data_valid_; }
+  /// Returns the iron-colormap colour for pixel (col, row). Safe to call from a display lambda.
+  esphome::Color get_pixel_color(uint8_t col, uint8_t row);
+
+ protected:
   static constexpr size_t PIXEL_COUNT = COLS * ROWS;
 
   void filter_outlier_pixel_(float *pixels, int size, float level);

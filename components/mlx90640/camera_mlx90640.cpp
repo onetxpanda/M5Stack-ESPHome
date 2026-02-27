@@ -355,5 +355,14 @@ uint32_t MLX90640::frame_interval_ms_() const {
   }
 }
 
+esphome::Color MLX90640::get_pixel_color(uint8_t col, uint8_t row) {
+  if (col >= COLS || row >= ROWS || !this->data_valid_)
+    return esphome::Color(0, 0, 0);
+  size_t idx = row * COLS + col;
+  const uint8_t *p = this->pixel_buffer_.get_data_buffer() + idx * 3;
+  // pixel_buffer_ is BGR888: byte order B, G, R
+  return esphome::Color(p[2], p[1], p[0]);
+}
+
 }  // namespace mlx90640
 }  // namespace esphome
