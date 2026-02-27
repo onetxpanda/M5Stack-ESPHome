@@ -101,6 +101,8 @@ void MLX90640::setup() {
   MLX90640_SetRefreshRate(this->address_, refresh_rate);
   ESP_LOGI(TAG, "Refresh rate register set to 0x%02X", refresh_rate);
 
+  this->interleaved_mode_ = MLX90640_GetCurMode(this->address_);
+
   for (int v = 0; v < 256; v++)
     iron_colormap(static_cast<uint8_t>(v), this->colormap_lut_[v].r, this->colormap_lut_[v].g, this->colormap_lut_[v].b);
 }
@@ -226,8 +228,7 @@ bool MLX90640::capture_frame_() {
   float tr = ta - TA_SHIFT;
   float emissivity = 0.95f;
   MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
-  int mode = MLX90640_GetCurMode(this->address_);
-  MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), mode, &this->mlx90640_params_);
+  MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), this->interleaved_mode_, &this->mlx90640_params_);
 
   // Accumulate subpages: only render once both halves of the frame are fresh.
   this->subpages_seen_ |= (1u << MLX90640_GetSubPageNumber(this->frame_buffer_.data()));

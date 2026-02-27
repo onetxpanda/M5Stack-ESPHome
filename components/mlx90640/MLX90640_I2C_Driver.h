@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 #include "esphome/components/i2c/i2c.h"
-#define I2C_BUFFER_LENGTH 32
+#define I2C_BUFFER_LENGTH 256
 
 
 void MLX90640_I2CInit(esphome::i2c::I2CDevice *device);
