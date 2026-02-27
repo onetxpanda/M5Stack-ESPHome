@@ -86,11 +86,5 @@ int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_
     return -1;
   }
 
-  uint16_t dataCheck;
-  MLX90640_I2CRead(_deviceAddress, writeAddress, 1, &dataCheck);
-  if (dataCheck != data) {
-    return -2;
-  }
-
   return 0;
 }
