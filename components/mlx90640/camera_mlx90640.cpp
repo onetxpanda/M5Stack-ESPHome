@@ -286,6 +286,7 @@ bool MLX90640::capture_frame_() {
     pixel_data[idx * 3 + 2] = r;
   }
 
+  this->on_frame_callbacks_.call();
   return true;
 }
 

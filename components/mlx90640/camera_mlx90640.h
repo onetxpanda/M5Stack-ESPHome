@@ -10,6 +10,7 @@
 #include "esphome/components/camera_encoder/esp32_camera_jpeg_encoder.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/core/automation.h"
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
 #include "MLX90640_API.h"
@@ -49,6 +50,8 @@ class MLX90640CameraImageReader : public camera::CameraImageReader {
   size_t offset_{0};
 };
 
+class MLX90640FrameTrigger : public Trigger<> {};
+
 class MLX90640 : public i2c::I2CDevice, public camera::Camera {
  public:
   float get_setup_priority() const override { return setup_priority::LATE; }
@@ -82,6 +85,9 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   bool is_data_valid() const { return this->data_valid_; }
   /// Returns the iron-colormap colour for pixel (col, row). Safe to call from a display lambda.
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
+  void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
+    this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
+  }
 
  protected:
   static constexpr size_t PIXEL_COUNT = COLS * ROWS;
@@ -123,6 +129,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   size_t encoder_buffer_size_{4096};
   size_t encoder_buffer_expand_size_{1024};
 
+  CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
   std::shared_ptr<MLX90640CameraImage> current_image_{};
   uint8_t stream_requesters_{0};

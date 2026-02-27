@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import automation
 from esphome.components import i2c, sensor, socket
 from esphome.components.esp32 import add_idf_component
 from esphome.core import coroutine_with_priority
@@ -9,6 +10,7 @@ from esphome.const import (
     CONF_MAX_TEMPERATURE,
     CONF_MIN_TEMPERATURE,
     CONF_NAME,
+    CONF_TRIGGER_ID,
     CONF_UPDATE_INTERVAL,
     DEVICE_CLASS_TEMPERATURE,
     STATE_CLASS_MEASUREMENT,
@@ -16,6 +18,7 @@ from esphome.const import (
 )
 from esphome.core.entity_helpers import setup_entity
 
+CONF_ON_FRAME = "on_frame"
 CONF_REFRESH_RATE = "refresh_rate"
 CONF_MEAN_TEMPERATURE = "mean_temperature"
 CONF_MEDIAN_TEMPERATURE = "median_temperature"
@@ -30,6 +33,7 @@ AUTO_LOAD = ["sensor", "camera", "camera_encoder", "socket"]
 
 mlx90640_ns = cg.esphome_ns.namespace("mlx90640")
 MLX90640 = mlx90640_ns.class_("MLX90640", i2c.I2CDevice, cg.Component, cg.EntityBase)
+MLX90640FrameTrigger = mlx90640_ns.class_("MLX90640FrameTrigger", automation.Trigger.template())
 CONFIG_SCHEMA = (
     cv.ENTITY_BASE_SCHEMA.extend(
         {
@@ -62,6 +66,9 @@ CONFIG_SCHEMA = (
                 device_class=DEVICE_CLASS_TEMPERATURE,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_ON_FRAME): automation.validate_automation(
+                {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(MLX90640FrameTrigger)}
+            ),
             cv.Optional(CONF_MEDIAN_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=2,
@@ -90,6 +97,11 @@ async def to_code(config):
     cg.add(var.set_encoder_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_encoder_buffer_size(config[CONF_BUFFER_SIZE]))
     cg.add(var.set_encoder_buffer_expand_size(config[CONF_BUFFER_EXPAND_SIZE]))
+
+    for conf in config.get(CONF_ON_FRAME, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
+        await automation.build_automation(trigger, [], conf)
+        cg.add(var.register_on_frame_trigger(trigger))
 
     if CONF_MIN_TEMPERATURE in config:
         conf = config[CONF_MIN_TEMPERATURE]
