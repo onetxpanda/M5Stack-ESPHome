@@ -134,6 +134,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   std::shared_ptr<MLX90640CameraImage> current_image_{};
   uint8_t stream_requesters_{0};
   uint8_t single_requesters_{0};
+  uint8_t subpages_seen_{0};
 };
 
 }  // namespace mlx90640
