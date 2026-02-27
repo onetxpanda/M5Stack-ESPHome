@@ -100,8 +100,6 @@ void MLX90640::setup() {
   uint8_t refresh_rate = (this->refresh_rate_ >= 0) ? static_cast<uint8_t>(this->refresh_rate_) : 0x05;
   MLX90640_SetRefreshRate(this->address_, refresh_rate);
   ESP_LOGI(TAG, "Refresh rate register set to 0x%02X", refresh_rate);
-
-  this->sensor_update_requested_ = true;
 }
 
 void MLX90640::dump_config() {
