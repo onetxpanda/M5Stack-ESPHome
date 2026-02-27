@@ -19,7 +19,15 @@
 
 #include <stdint.h>
 #include "esphome/components/i2c/i2c.h"
-#define I2C_BUFFER_LENGTH 256
+// ESP-IDF's write_readv passes the buffer pointer directly to the IDF driver
+// with no internal size limit, so read the entire pixel frame in one transaction.
+// Arduino Wire has an internal 128-byte buffer (BUFFER_LENGTH in Wire.h);
+// exceeding it causes a short read that ESPHome reports as ERROR_TIMEOUT.
+#ifdef USE_ESP_IDF
+#define I2C_BUFFER_LENGTH 1536
+#else
+#define I2C_BUFFER_LENGTH 128
+#endif
 
 
 void MLX90640_I2CInit(esphome::i2c::I2CDevice *device);
