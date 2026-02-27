@@ -229,6 +229,12 @@ bool MLX90640::capture_frame_() {
   int mode = MLX90640_GetCurMode(this->address_);
   MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), mode, &this->mlx90640_params_);
 
+  // Accumulate subpages: only render once both halves of the frame are fresh.
+  this->subpages_seen_ |= (1u << MLX90640_GetSubPageNumber(this->frame_buffer_.data()));
+  if (this->subpages_seen_ != 0x03)
+    return false;
+  this->subpages_seen_ = 0;
+
   this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
   this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
   this->max_v_ = this->mintemp_;
