@@ -11,7 +11,6 @@ from esphome.const import (
     CONF_MIN_TEMPERATURE,
     CONF_NAME,
     CONF_TRIGGER_ID,
-    CONF_UPDATE_INTERVAL,
     DEVICE_CLASS_TEMPERATURE,
     STATE_CLASS_MEASUREMENT,
     UNIT_CELSIUS,
@@ -77,7 +76,6 @@ CONFIG_SCHEMA = (
             ),
         }
     )
-    .extend(cv.polling_component_schema("60s"))
     .extend(i2c.i2c_device_schema(0x33))
 )
 
@@ -93,7 +91,6 @@ async def to_code(config):
     await setup_entity(var, config, "camera")
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
-    cg.add(var.set_update_interval(config[CONF_UPDATE_INTERVAL]))
     cg.add(var.set_encoder_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_encoder_buffer_size(config[CONF_BUFFER_SIZE]))
     cg.add(var.set_encoder_buffer_expand_size(config[CONF_BUFFER_EXPAND_SIZE]))
