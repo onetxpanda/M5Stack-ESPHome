@@ -13,6 +13,8 @@ static constexpr int TA_SHIFT = 8;  // Default shift for MLX90640 in open air
 static constexpr float MIN_CAM_V = -40.0f;   // Spec in datasheet
 static constexpr float MAX_CAM_V = 300.0f;   // Spec in datasheet
 
+static void iron_colormap(uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b);
+
 /* ---------------- MLX90640CameraImageReader ---------------- */
 void MLX90640CameraImageReader::set_image(std::shared_ptr<camera::CameraImage> image) {
   this->image_ = std::static_pointer_cast<MLX90640CameraImage>(image);
