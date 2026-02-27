@@ -111,6 +111,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   struct IronColor { uint8_t r, g, b; };
   std::array<IronColor, 256> colormap_lut_{};
 
+  int interleaved_mode_{0};
   paramsMLX90640 mlx90640_params_{};
   std::array<float, PIXEL_COUNT> pixels_{};
   std::array<uint16_t, 834> frame_buffer_{};
