@@ -67,7 +67,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   void set_maxtemp(float max) { this->maxtemp_ = max; }
   void set_refresh_rate(int refresh) { this->refresh_rate_ = refresh; }
   void set_filter_level(float level) { this->filter_level_ = level; }
-  void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
   void set_encoder_quality(uint8_t quality) { this->encoder_quality_ = quality; }
   void set_encoder_buffer_size(size_t size) { this->encoder_buffer_size_ = size; }
   void set_encoder_buffer_expand_size(size_t size) { this->encoder_buffer_expand_size_ = size; }
@@ -103,7 +102,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   float maxtemp_{35.0f};
   int refresh_rate_{-1};
   float filter_level_{10.0f};
-  uint32_t update_interval_{60000};
 
   sensor::Sensor *min_temperature_sensor_{nullptr};
   sensor::Sensor *max_temperature_sensor_{nullptr};
@@ -119,7 +117,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   float mean_temp_{0.0f};
   float median_temp_{0.0f};
   bool data_valid_{false};
-  bool sensor_update_requested_{false};
 
   camera::CameraImageSpec image_spec_{COLS, ROWS, camera::PIXEL_FORMAT_BGR888};
   camera::BufferImpl pixel_buffer_{&image_spec_};

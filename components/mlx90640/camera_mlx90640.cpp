@@ -48,8 +48,6 @@ void MLX90640::setup() {
       ->set_buffer_expand_size(this->encoder_buffer_expand_size_);
 #endif
 
-  this->set_interval("mlx90640_update", this->update_interval_, [this]() { this->sensor_update_requested_ = true; });
-
   MLX90640_I2CInit(this);
   int status = 0;
   uint16_t ee_data[832];
@@ -118,7 +116,6 @@ void MLX90640::dump_config() {
   ESP_LOGCONFIG(TAG, "  Color MaxTemp: %d", static_cast<int>(this->maxtemp_));
   ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
   ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ >= 0 ? this->refresh_rate_ : 0x05);
-  ESP_LOGCONFIG(TAG, "  Update interval: %u ms", this->update_interval_);
   ESP_LOGCONFIG(TAG, "  JPEG quality: %u", this->encoder_quality_);
   ESP_LOGCONFIG(TAG, "  JPEG buffer size: %u", static_cast<unsigned>(this->encoder_buffer_size_));
   ESP_LOGCONFIG(TAG, "  JPEG buffer expand size: %u", static_cast<unsigned>(this->encoder_buffer_expand_size_));
@@ -131,41 +128,29 @@ void MLX90640::dump_config() {
 void MLX90640::loop() {
   const uint32_t now = App.get_loop_component_start_time();
 
-  if (this->current_image_ && this->current_image_.use_count() == 1) {
+  if (this->current_image_ && this->current_image_.use_count() == 1)
     this->current_image_.reset();
-  }
 
-  if (this->stream_requesters_ && now - this->last_frame_ms_ >= this->frame_interval_ms_()) {
-    this->single_requesters_ |= this->stream_requesters_;
-  }
-
-  // Piggyback an IDLE camera frame on each sensor update so HA receives periodic images
-  // without needing to explicitly request a stream first.
-  if (this->sensor_update_requested_) {
-    this->single_requesters_ |= (1U << camera::IDLE);
-  }
-
-  if (!this->sensor_update_requested_ && !this->has_requested_image_())
+  if (now - this->last_frame_ms_ < this->frame_interval_ms_())
     return;
 
   if (this->current_image_)
     return;
 
+  if (this->stream_requesters_)
+    this->single_requesters_ |= this->stream_requesters_;
+
   if (!this->capture_frame_()) {
-    this->sensor_update_requested_ = false;
     this->single_requesters_ = 0;
+    this->last_frame_ms_ = now;
     return;
   }
 
-  if (this->sensor_update_requested_) {
-    this->publish_sensors_();
-    this->sensor_update_requested_ = false;
-  }
+  this->publish_sensors_();
+  this->last_frame_ms_ = now;
 
   if (this->has_requested_image_()) {
-    if (this->encode_frame_(this->single_requesters_ | this->stream_requesters_)) {
-      this->last_frame_ms_ = now;
-    }
+    this->encode_frame_(this->single_requesters_);
     this->single_requesters_ = 0;
   }
 }
