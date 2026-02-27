@@ -3,15 +3,13 @@
 #include <algorithm>
 #include <cmath>
 
-#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
 namespace mlx90640 {
 
 static const char *const TAG = "MLX90640";
-static constexpr uint8_t SPEED_SETTING = 2;  // High is 1 , Low is 2
-static constexpr int TA_SHIFT = 8;           // Default shift for MLX90640 in open air
+static constexpr int TA_SHIFT = 8;  // Default shift for MLX90640 in open air
 static constexpr float MIN_CAM_V = -40.0f;   // Spec in datasheet
 static constexpr float MAX_CAM_V = 300.0f;   // Spec in datasheet
 
@@ -100,6 +98,9 @@ void MLX90640::setup() {
   uint8_t refresh_rate = (this->refresh_rate_ >= 0) ? static_cast<uint8_t>(this->refresh_rate_) : 0x05;
   MLX90640_SetRefreshRate(this->address_, refresh_rate);
   ESP_LOGI(TAG, "Refresh rate register set to 0x%02X", refresh_rate);
+
+  for (int v = 0; v < 256; v++)
+    iron_colormap(static_cast<uint8_t>(v), this->colormap_lut_[v].r, this->colormap_lut_[v].g, this->colormap_lut_[v].b);
 }
 
 void MLX90640::dump_config() {
@@ -124,12 +125,10 @@ void MLX90640::dump_config() {
 }
 
 void MLX90640::loop() {
-  const uint32_t now = App.get_loop_component_start_time();
-
   if (this->current_image_ && this->current_image_.use_count() == 1)
     this->current_image_.reset();
 
-  if (now - this->last_frame_ms_ < this->frame_interval_ms_())
+  if (!this->is_data_ready_())
     return;
 
   if (this->current_image_)
@@ -140,12 +139,10 @@ void MLX90640::loop() {
 
   if (!this->capture_frame_()) {
     this->single_requesters_ = 0;
-    this->last_frame_ms_ = now;
     return;
   }
 
   this->publish_sensors_();
-  this->last_frame_ms_ = now;
 
   if (this->has_requested_image_()) {
     this->encode_frame_(this->single_requesters_);
@@ -214,23 +211,21 @@ static void iron_colormap(uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
 }
 
 bool MLX90640::capture_frame_() {
-  for (uint8_t i = 0; i < SPEED_SETTING; i++) {
-    int status = MLX90640_GetFrameData(this->address_, this->frame_buffer_.data());
-    if (status < 0) {
-      ESP_LOGE(TAG, "GetFrame Error: %d", status);
-      this->data_valid_ = false;
-      return false;
-    }
-
-    float vdd = MLX90640_GetVdd(this->frame_buffer_.data(), &this->mlx90640_params_);
-    (void) vdd;
-    float ta = MLX90640_GetTa(this->frame_buffer_.data(), &this->mlx90640_params_);
-    float tr = ta - TA_SHIFT;
-    float emissivity = 0.95f;
-    MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
-    int mode = MLX90640_GetCurMode(this->address_);
-    MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), mode, &this->mlx90640_params_);
+  int status = MLX90640_GetFrameData(this->address_, this->frame_buffer_.data());
+  if (status < 0) {
+    ESP_LOGE(TAG, "GetFrame Error: %d", status);
+    this->data_valid_ = false;
+    return false;
   }
+
+  float vdd = MLX90640_GetVdd(this->frame_buffer_.data(), &this->mlx90640_params_);
+  (void) vdd;
+  float ta = MLX90640_GetTa(this->frame_buffer_.data(), &this->mlx90640_params_);
+  float tr = ta - TA_SHIFT;
+  float emissivity = 0.95f;
+  MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
+  int mode = MLX90640_GetCurMode(this->address_);
+  MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), mode, &this->mlx90640_params_);
 
   this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
   this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
@@ -261,12 +256,11 @@ bool MLX90640::capture_frame_() {
     float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
     float scaled = (clamped - this->mintemp_) / span;
     uint8_t v = static_cast<uint8_t>(std::roundf(scaled * 255.0f));
-    uint8_t r, g, b;
-    iron_colormap(v, r, g, b);
+    const IronColor &c = this->colormap_lut_[v];
     // PIXEL_FORMAT_BGR888: bytes stored as B, G, R
-    pixel_data[idx * 3 + 0] = b;
-    pixel_data[idx * 3 + 1] = g;
-    pixel_data[idx * 3 + 2] = r;
+    pixel_data[idx * 3 + 0] = c.b;
+    pixel_data[idx * 3 + 1] = c.g;
+    pixel_data[idx * 3 + 2] = c.r;
   }
 
   this->on_frame_callbacks_.call();
@@ -316,27 +310,11 @@ void MLX90640::publish_sensors_() {
     this->median_temperature_sensor_->publish_state(this->median_temp_);
 }
 
-uint32_t MLX90640::frame_interval_ms_() const {
-  switch (this->refresh_rate_) {
-    case 0x00:
-      return 2000;
-    case 0x01:
-      return 1000;
-    case 0x02:
-      return 500;
-    case 0x03:
-      return 250;
-    case 0x04:
-      return 125;
-    case 0x05:
-      return 63;
-    case 0x06:
-      return 32;
-    case 0x07:
-      return 16;
-    default:
-      return 63;
-  }
+bool MLX90640::is_data_ready_() {
+  uint16_t status;
+  if (MLX90640_I2CRead(this->address_, MLX90640_STATUS_REG, 1, &status) != 0)
+    return false;
+  return MLX90640_GET_DATA_READY(status) != 0;
 }
 
 esphome::Color MLX90640::get_pixel_color(uint8_t col, uint8_t row) {

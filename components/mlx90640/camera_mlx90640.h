@@ -92,11 +92,11 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   static constexpr size_t PIXEL_COUNT = COLS * ROWS;
 
   void filter_outlier_pixel_(float *pixels, int size, float level);
+  bool is_data_ready_();
   bool capture_frame_();
   bool encode_frame_(uint8_t requesters);
   void publish_sensors_();
   bool has_requested_image_() const { return this->single_requesters_ || this->stream_requesters_; }
-  uint32_t frame_interval_ms_() const;
 
   float mintemp_{24.0f};
   float maxtemp_{35.0f};
@@ -107,6 +107,9 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   sensor::Sensor *max_temperature_sensor_{nullptr};
   sensor::Sensor *mean_temperature_sensor_{nullptr};
   sensor::Sensor *median_temperature_sensor_{nullptr};
+
+  struct IronColor { uint8_t r, g, b; };
+  std::array<IronColor, 256> colormap_lut_{};
 
   paramsMLX90640 mlx90640_params_{};
   std::array<float, PIXEL_COUNT> pixels_{};
@@ -131,7 +134,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   std::shared_ptr<MLX90640CameraImage> current_image_{};
   uint8_t stream_requesters_{0};
   uint8_t single_requesters_{0};
-  uint32_t last_frame_ms_{0};
 };
 
 }  // namespace mlx90640
