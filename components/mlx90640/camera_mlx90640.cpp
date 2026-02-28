@@ -237,11 +237,14 @@ bool MLX90640::capture_frame_() {
   MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
   MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), this->interleaved_mode_, &this->mlx90640_params_);
 
-  // Accumulate subpages: only render once both halves of the frame are fresh.
+  // Wait for both sub-frames on the initial warm-up so every pixel starts with
+  // valid data. After that, subpages_seen_ stays at 0x03 and we render after
+  // every sub-frame. MLX90640_CalculateTo() only overwrites pixels for the
+  // current sub-frame; the other half retains its previous reading, giving a
+  // motion-safe composite and eliminating the checker pattern on movement.
   this->subpages_seen_ |= (1u << MLX90640_GetSubPageNumber(this->frame_buffer_.data()));
   if (this->subpages_seen_ != 0x03)
     return false;
-  this->subpages_seen_ = 0;
 
   this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
   this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
