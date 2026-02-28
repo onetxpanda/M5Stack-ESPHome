@@ -302,16 +302,16 @@ int MLX90640_SetRefreshRate(uint8_t slaveAddr, uint8_t refreshRate)
     uint16_t value;
     int error;
     
-    //value = (refreshRate & 0x07)<<7;
-    value = ((uint16_t)refreshRate << MLX90640_CTRL_REFRESH_SHIFT);
-    value &= ~MLX90640_CTRL_REFRESH_MASK;
-    
+    // Mask rate to valid 3-bit range then place it in the correct field.
+    value = ((uint16_t)(refreshRate & 0x07) << MLX90640_CTRL_REFRESH_SHIFT) & MLX90640_CTRL_REFRESH_MASK;
+
     error = MLX90640_I2CRead(slaveAddr, MLX90640_CTRL_REG, 1, &controlRegister1);
     if(error == MLX90640_NO_ERROR)
     {
-        value = (controlRegister1 & MLX90640_CTRL_REFRESH_MASK) | value;
+        // Preserve all other control bits; replace only the refresh-rate field.
+        value = (controlRegister1 & ~MLX90640_CTRL_REFRESH_MASK) | value;
         error = MLX90640_I2CWrite(slaveAddr, MLX90640_CTRL_REG, value);
-    }    
+    }
     
     return error;
 }
@@ -329,7 +329,7 @@ int MLX90640_GetRefreshRate(uint8_t slaveAddr)
     {
         return error;
     }    
-    refreshRate = (controlRegister1 & ~MLX90640_CTRL_REFRESH_MASK) >> MLX90640_CTRL_REFRESH_SHIFT;
+    refreshRate = (controlRegister1 & MLX90640_CTRL_REFRESH_MASK) >> MLX90640_CTRL_REFRESH_SHIFT;
     
     return refreshRate;
 }
