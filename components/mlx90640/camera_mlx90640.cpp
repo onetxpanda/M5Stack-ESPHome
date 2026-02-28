@@ -237,14 +237,46 @@ bool MLX90640::capture_frame_() {
   MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
   MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), this->interleaved_mode_, &this->mlx90640_params_);
 
-  // Wait for both sub-frames on the initial warm-up so every pixel starts with
-  // valid data. After that, subpages_seen_ stays at 0x03 and we render after
-  // every sub-frame. MLX90640_CalculateTo() only overwrites pixels for the
-  // current sub-frame; the other half retains its previous reading, giving a
-  // motion-safe composite and eliminating the checker pattern on movement.
-  this->subpages_seen_ |= (1u << MLX90640_GetSubPageNumber(this->frame_buffer_.data()));
-  if (this->subpages_seen_ != 0x03)
-    return false;
+  // Spatially interpolate pixels not captured in this sub-frame from their
+  // current-subframe neighbours. In chess mode every 4-connected neighbour of
+  // a missing pixel belongs to the current sub-frame, so the result is a fully
+  // temporally-coherent frame (all data from the same capture instant) with no
+  // checker pattern on movement. In interleaved mode the two vertical neighbours
+  // are used. Either way the missing pixels are never stale.
+  const int subpage = MLX90640_GetSubPageNumber(this->frame_buffer_.data());
+  if (this->interleaved_mode_ == 1) {
+    // Chess mode: pixel (row,col) is in subpage (row+col)&1.
+    // All 4-connected neighbours of a missing pixel are in the current subpage.
+    for (int row = 0; row < ROWS; row++) {
+      for (int col = 0; col < COLS; col++) {
+        if (((row + col) & 1) == subpage)
+          continue;
+        float sum = 0.0f;
+        int cnt = 0;
+        if (row > 0)      { sum += this->pixels_[(row - 1) * COLS + col]; cnt++; }
+        if (row < ROWS-1) { sum += this->pixels_[(row + 1) * COLS + col]; cnt++; }
+        if (col > 0)      { sum += this->pixels_[row * COLS + col - 1];   cnt++; }
+        if (col < COLS-1) { sum += this->pixels_[row * COLS + col + 1];   cnt++; }
+        if (cnt)
+          this->pixels_[row * COLS + col] = sum / cnt;
+      }
+    }
+  } else {
+    // Interleaved mode: pixel (row,col) is in subpage row&1.
+    // Only the vertical neighbours are in the current subpage.
+    for (int row = 0; row < ROWS; row++) {
+      if ((row & 1) == subpage)
+        continue;
+      for (int col = 0; col < COLS; col++) {
+        float sum = 0.0f;
+        int cnt = 0;
+        if (row > 0)      { sum += this->pixels_[(row - 1) * COLS + col]; cnt++; }
+        if (row < ROWS-1) { sum += this->pixels_[(row + 1) * COLS + col]; cnt++; }
+        if (cnt)
+          this->pixels_[row * COLS + col] = sum / cnt;
+      }
+    }
+  }
 
   this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
   this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
