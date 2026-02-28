@@ -13,6 +13,7 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
+#include "esp_heap_caps.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 
@@ -149,7 +150,9 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
   std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
-  std::unique_ptr<uint8_t[]> rgb565_buffer_{};
+  // Allocated explicitly in PSRAM via heap_caps_malloc; deleter calls heap_caps_free.
+  struct PsramDeleter { void operator()(uint8_t *p) const { heap_caps_free(p); } };
+  std::unique_ptr<uint8_t[], PsramDeleter> rgb565_buffer_{};
 
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
