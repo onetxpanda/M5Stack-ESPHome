@@ -53,6 +53,8 @@ void MLX90640::setup() {
                         camera::PIXEL_FORMAT_BGR888};
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(
       static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 3);
+  this->rgb565_buffer_ = std::make_unique<uint8_t[]>(
+      static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2);
 
   MLX90640_I2CInit(this);
   int status = 0;
@@ -314,9 +316,10 @@ bool MLX90640::capture_frame_() {
     pixel_data[idx * 3 + 2] = c.r;
   }
 
-  // Upscale pixel_buffer_ into scaled_buffer_ so both the JPEG encoder and
-  // any display lambda accessing get_upscaled_buffer() see current data.
+  // Upscale pixel_buffer_ into scaled_buffer_ (BGR888 for JPEG) and
+  // rgb565_buffer_ (big-endian RGB565 for direct display use) simultaneously.
   uint8_t *dst = this->scaled_buffer_->get_data_buffer();
+  uint8_t *dst565 = this->rgb565_buffer_.get();
   const uint8_t *src = this->pixel_buffer_.get_data_buffer();
   const uint16_t scaled_w = this->scaled_spec_.width;
   const uint16_t scaled_h = this->scaled_spec_.height;
@@ -324,9 +327,14 @@ bool MLX90640::capture_frame_() {
     const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
     for (uint16_t ox = 0; ox < scaled_w; ox++) {
       const uint8_t *p = src_row + (ox / this->scale_) * 3;
+      // BGR888
       *dst++ = p[0];
       *dst++ = p[1];
       *dst++ = p[2];
+      // RGB565 big-endian: R5G6B5 — p is [B, G, R]
+      uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
+      *dst565++ = px >> 8;
+      *dst565++ = px & 0xFF;
     }
   }
 

@@ -92,6 +92,10 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   }
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
+  /// Raw RGB565 big-endian pointer to the upscaled buffer (width = COLS*scale, height = ROWS*scale).
+  /// Valid after the first frame; layout is row-major, 2 bytes per pixel, big-endian R5G6B5.
+  /// Pass to draw_pixels_at() with COLOR_ORDER_RGB, COLOR_BITNESS_565, big_endian=true.
+  const uint8_t *get_rgb565_buffer() const { return this->rgb565_buffer_.get(); }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
     this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
   }
@@ -141,6 +145,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
   std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
+  std::unique_ptr<uint8_t[]> rgb565_buffer_{};
 
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
