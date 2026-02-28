@@ -85,6 +85,13 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   bool is_data_valid() const { return this->data_valid_; }
   /// Returns the iron-colormap colour for pixel (col, row). Safe to call from a display lambda.
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
+  /// Raw BGR888 pointer to the upscaled buffer (width = COLS*scale, height = ROWS*scale).
+  /// Valid after the first frame; layout is row-major, 3 bytes per pixel (B, G, R).
+  const uint8_t *get_upscaled_buffer() const {
+    return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
+  }
+  uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
+  uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
     this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
   }
