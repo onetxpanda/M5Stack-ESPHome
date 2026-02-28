@@ -26,6 +26,7 @@ CONF_MAXTEMP = "maxtemp"
 CONF_FILTER_LEVEL = "filter_level"
 CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"
 CONF_JPEG_QUALITY = "jpeg_quality"
+CONF_JPEG_SCALE = "jpeg_scale"
 
 DEPENDENCIES = ["i2c", "esp32"]
 AUTO_LOAD = ["sensor", "camera", "camera_encoder", "socket"]
@@ -43,6 +44,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_REFRESH_RATE): cv.int_range(min=0, max=7),
             cv.Optional(CONF_FILTER_LEVEL): cv.float_,
             cv.Optional(CONF_JPEG_QUALITY, default=80): cv.int_range(min=1, max=100),
+            cv.Optional(CONF_JPEG_SCALE, default=4): cv.int_range(min=1, max=10),
             cv.Optional(CONF_BUFFER_SIZE, default=4096): cv.int_range(min=1024, max=2 * 1024 * 1024),
             cv.Optional(CONF_BUFFER_EXPAND_SIZE, default=1024): cv.int_range(
                 min=0, max=2 * 1024 * 1024
@@ -94,6 +96,7 @@ async def to_code(config):
     cg.add(var.set_encoder_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_encoder_buffer_size(config[CONF_BUFFER_SIZE]))
     cg.add(var.set_encoder_buffer_expand_size(config[CONF_BUFFER_EXPAND_SIZE]))
+    cg.add(var.set_jpeg_scale(config[CONF_JPEG_SCALE]))
 
     for conf in config.get(CONF_ON_FRAME, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
