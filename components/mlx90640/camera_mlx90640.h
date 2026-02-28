@@ -132,6 +132,9 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   size_t encoder_buffer_size_{4096};
   size_t encoder_buffer_expand_size_{1024};
 
+  camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
+  std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
+
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
   std::shared_ptr<MLX90640CameraImage> current_image_{};

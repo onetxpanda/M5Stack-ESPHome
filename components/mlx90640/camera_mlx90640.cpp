@@ -48,6 +48,12 @@ void MLX90640::setup() {
       ->set_buffer_expand_size(this->encoder_buffer_expand_size_);
 #endif
 
+  this->scaled_spec_ = {static_cast<uint16_t>(COLS * this->scale_),
+                        static_cast<uint16_t>(ROWS * this->scale_),
+                        camera::PIXEL_FORMAT_BGR888};
+  this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(
+      static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 3);
+
   MLX90640_I2CInit(this);
   int status = 0;
   uint16_t ee_data[832];
@@ -284,18 +290,10 @@ bool MLX90640::encode_frame_(uint8_t requesters) {
     return false;
   }
 
-  uint16_t scaled_w = static_cast<uint16_t>(COLS * this->scale_);
-  uint16_t scaled_h = static_cast<uint16_t>(ROWS * this->scale_);
-  camera::CameraImageSpec scaled_spec{scaled_w, scaled_h, camera::PIXEL_FORMAT_BGR888};
-  camera::BufferImpl scaled_buffer(static_cast<size_t>(scaled_w) * scaled_h * 3);
-
-  uint8_t *dst = scaled_buffer.get_data_buffer();
-  if (!dst) {
-    ESP_LOGE(TAG, "Failed to allocate %u-byte upscale buffer", (unsigned) (scaled_w * scaled_h * 3));
-    return false;
-  }
-
+  uint8_t *dst = this->scaled_buffer_->get_data_buffer();
   const uint8_t *src = this->pixel_buffer_.get_data_buffer();
+  const uint16_t scaled_w = this->scaled_spec_.width;
+  const uint16_t scaled_h = this->scaled_spec_.height;
   for (uint16_t oy = 0; oy < scaled_h; oy++) {
     const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
     for (uint16_t ox = 0; ox < scaled_w; ox++) {
@@ -308,7 +306,7 @@ bool MLX90640::encode_frame_(uint8_t requesters) {
 
   camera::EncoderError error;
   do {
-    error = this->encoder_->encode_pixels(&scaled_spec, &scaled_buffer);
+    error = this->encoder_->encode_pixels(&this->scaled_spec_, this->scaled_buffer_.get());
     if (error == camera::ENCODER_ERROR_SKIP_FRAME)
       return false;
     if (error == camera::ENCODER_ERROR_CONFIGURATION) {
