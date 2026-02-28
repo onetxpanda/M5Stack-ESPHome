@@ -141,25 +141,42 @@ void MLX90640::loop() {
   if (this->current_image_ && this->current_image_.use_count() == 1)
     this->current_image_.reset();
 
-  if (!this->is_data_ready_())
-    return;
+  switch (this->phase_) {
+    case CapturePhase::IDLE:
+      if (!this->is_data_ready_() || this->current_image_)
+        return;
+      if (this->stream_requesters_)
+        this->single_requesters_ |= this->stream_requesters_;
+      // Phase 1: I2C read + FP math — yields here, colours next tick.
+      if (!this->fetch_and_calc_()) {
+        this->single_requesters_ = 0;
+        return;
+      }
+      this->phase_ = CapturePhase::COLOR;
+      return;
 
-  if (this->current_image_)
-    return;
+    case CapturePhase::COLOR:
+      // Phase 2: filter + colormap + upscale + on_frame callbacks.
+      if (!this->colormap_and_upscale_()) {
+        this->single_requesters_ = 0;
+        this->phase_ = CapturePhase::IDLE;
+        return;
+      }
+      this->publish_sensors_();
+      if (this->has_requested_image_()) {
+        this->phase_ = CapturePhase::ENCODE;
+      } else {
+        this->single_requesters_ = 0;
+        this->phase_ = CapturePhase::IDLE;
+      }
+      return;
 
-  if (this->stream_requesters_)
-    this->single_requesters_ |= this->stream_requesters_;
-
-  if (!this->capture_frame_()) {
-    this->single_requesters_ = 0;
-    return;
-  }
-
-  this->publish_sensors_();
-
-  if (this->has_requested_image_()) {
-    this->encode_frame_(this->single_requesters_);
-    this->single_requesters_ = 0;
+    case CapturePhase::ENCODE:
+      // Phase 3: JPEG encode — only reached when a requester is waiting.
+      this->encode_frame_(this->single_requesters_);
+      this->single_requesters_ = 0;
+      this->phase_ = CapturePhase::IDLE;
+      return;
   }
 }
 
@@ -223,7 +240,7 @@ static void iron_colormap(uint8_t v, uint8_t &r, uint8_t &g, uint8_t &b) {
   r = 255; g = 255; b = 255;
 }
 
-bool MLX90640::capture_frame_() {
+bool MLX90640::fetch_and_calc_() {
   int status = MLX90640_GetFrameData(this->address_, this->frame_buffer_.data());
   if (status < 0) {
     ESP_LOGE(TAG, "GetFrame Error: %d", status);
@@ -235,9 +252,9 @@ bool MLX90640::capture_frame_() {
   (void) vdd;
   float ta = MLX90640_GetTa(this->frame_buffer_.data(), &this->mlx90640_params_);
   float tr = ta - TA_SHIFT;
-  float emissivity = 0.95f;
-  MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, emissivity, tr, this->pixels_.data());
-  MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), this->interleaved_mode_, &this->mlx90640_params_);
+  MLX90640_CalculateTo(this->frame_buffer_.data(), &this->mlx90640_params_, 0.95f, tr, this->pixels_.data());
+  MLX90640_BadPixelsCorrection(this->mlx90640_params_.brokenPixels, this->pixels_.data(), this->interleaved_mode_,
+                               &this->mlx90640_params_);
 
   // Spatially interpolate pixels not captured in this sub-frame from their
   // current-subframe neighbours. In chess mode every 4-connected neighbour of
@@ -279,19 +296,20 @@ bool MLX90640::capture_frame_() {
       }
     }
   }
+  return true;
+}
 
+bool MLX90640::colormap_and_upscale_() {
   this->filter_outlier_pixel_(this->pixels_.data(), PIXEL_COUNT, this->filter_level_);
   this->median_temp_ = (this->pixels_[165] + this->pixels_[180] + this->pixels_[176] + this->pixels_[192]) / 4.0f;
   this->max_v_ = this->mintemp_;
   this->min_v_ = this->maxtemp_;
   float total = 0.0f;
   for (float temperature : this->pixels_) {
-    if (temperature > this->max_v_) {
+    if (temperature > this->max_v_)
       this->max_v_ = temperature;
-    }
-    if (temperature < this->min_v_) {
+    if (temperature < this->min_v_)
       this->min_v_ = temperature;
-    }
     total += temperature;
   }
   this->mean_temp_ = total / PIXEL_COUNT;
@@ -307,11 +325,9 @@ bool MLX90640::capture_frame_() {
   uint8_t *pixel_data = this->pixel_buffer_.get_data_buffer();
   for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
     float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
-    float scaled = (clamped - this->mintemp_) / span;
-    uint8_t v = static_cast<uint8_t>(std::roundf(scaled * 255.0f));
+    uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) / span * 255.0f));
     const IronColor &c = this->colormap_lut_[v];
-    // PIXEL_FORMAT_BGR888: bytes stored as B, G, R
-    pixel_data[idx * 3 + 0] = c.b;
+    pixel_data[idx * 3 + 0] = c.b;  // PIXEL_FORMAT_BGR888: B, G, R
     pixel_data[idx * 3 + 1] = c.g;
     pixel_data[idx * 3 + 2] = c.r;
   }
@@ -327,11 +343,10 @@ bool MLX90640::capture_frame_() {
     const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
     for (uint16_t ox = 0; ox < scaled_w; ox++) {
       const uint8_t *p = src_row + (ox / this->scale_) * 3;
-      // BGR888
       *dst++ = p[0];
       *dst++ = p[1];
       *dst++ = p[2];
-      // RGB565 big-endian: R5G6B5 — p is [B, G, R]
+      // p is [B, G, R] → RGB565 big-endian
       uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
       *dst565++ = px >> 8;
       *dst565++ = px & 0xFF;

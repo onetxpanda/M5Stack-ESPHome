@@ -105,10 +105,14 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   void filter_outlier_pixel_(float *pixels, int size, float level);
   bool is_data_ready_();
-  bool capture_frame_();
+  bool fetch_and_calc_();       // Phase 1: I2C read + MLX90640_CalculateTo + interpolation
+  bool colormap_and_upscale_(); // Phase 2: filter + colormap + upscale + on_frame callbacks
   bool encode_frame_(uint8_t requesters);
   void publish_sensors_();
   bool has_requested_image_() const { return this->single_requesters_ || this->stream_requesters_; }
+
+  enum class CapturePhase : uint8_t { IDLE = 0, COLOR, ENCODE };
+  CapturePhase phase_{CapturePhase::IDLE};
 
   float mintemp_{24.0f};
   float maxtemp_{35.0f};
