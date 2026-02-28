@@ -314,17 +314,8 @@ bool MLX90640::capture_frame_() {
     pixel_data[idx * 3 + 2] = c.r;
   }
 
-  this->on_frame_callbacks_.call();
-  return true;
-}
-
-bool MLX90640::encode_frame_(uint8_t requesters) {
-#ifdef USE_ESP32_CAMERA_JPEG_ENCODER
-  if (this->encoder_ == nullptr) {
-    ESP_LOGE(TAG, "JPEG encoder not configured");
-    return false;
-  }
-
+  // Upscale pixel_buffer_ into scaled_buffer_ so both the JPEG encoder and
+  // any display lambda accessing get_upscaled_buffer() see current data.
   uint8_t *dst = this->scaled_buffer_->get_data_buffer();
   const uint8_t *src = this->pixel_buffer_.get_data_buffer();
   const uint16_t scaled_w = this->scaled_spec_.width;
@@ -337,6 +328,17 @@ bool MLX90640::encode_frame_(uint8_t requesters) {
       *dst++ = p[1];
       *dst++ = p[2];
     }
+  }
+
+  this->on_frame_callbacks_.call();
+  return true;
+}
+
+bool MLX90640::encode_frame_(uint8_t requesters) {
+#ifdef USE_ESP32_CAMERA_JPEG_ENCODER
+  if (this->encoder_ == nullptr) {
+    ESP_LOGE(TAG, "JPEG encoder not configured");
+    return false;
   }
 
   camera::EncoderError error;
