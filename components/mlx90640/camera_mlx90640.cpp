@@ -120,6 +120,7 @@ void MLX90640::dump_config() {
   ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
   ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ >= 0 ? this->refresh_rate_ : 0x05);
   ESP_LOGCONFIG(TAG, "  JPEG quality: %u", this->encoder_quality_);
+  ESP_LOGCONFIG(TAG, "  JPEG scale: %ux (%ux%u)", this->scale_, COLS * this->scale_, ROWS * this->scale_);
   ESP_LOGCONFIG(TAG, "  JPEG buffer size: %u", static_cast<unsigned>(this->encoder_buffer_size_));
   ESP_LOGCONFIG(TAG, "  JPEG buffer expand size: %u", static_cast<unsigned>(this->encoder_buffer_expand_size_));
   LOG_SENSOR("  ", "Min temperature", this->min_temperature_sensor_);
@@ -282,9 +283,32 @@ bool MLX90640::encode_frame_(uint8_t requesters) {
     ESP_LOGE(TAG, "JPEG encoder not configured");
     return false;
   }
+
+  uint16_t scaled_w = static_cast<uint16_t>(COLS * this->scale_);
+  uint16_t scaled_h = static_cast<uint16_t>(ROWS * this->scale_);
+  camera::CameraImageSpec scaled_spec{scaled_w, scaled_h, camera::PIXEL_FORMAT_BGR888};
+  camera::BufferImpl scaled_buffer(static_cast<size_t>(scaled_w) * scaled_h * 3);
+
+  uint8_t *dst = scaled_buffer.get_data_buffer();
+  if (!dst) {
+    ESP_LOGE(TAG, "Failed to allocate %u-byte upscale buffer", (unsigned) (scaled_w * scaled_h * 3));
+    return false;
+  }
+
+  const uint8_t *src = this->pixel_buffer_.get_data_buffer();
+  for (uint16_t oy = 0; oy < scaled_h; oy++) {
+    const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
+    for (uint16_t ox = 0; ox < scaled_w; ox++) {
+      const uint8_t *p = src_row + (ox / this->scale_) * 3;
+      *dst++ = p[0];
+      *dst++ = p[1];
+      *dst++ = p[2];
+    }
+  }
+
   camera::EncoderError error;
   do {
-    error = this->encoder_->encode_pixels(&this->image_spec_, &this->pixel_buffer_);
+    error = this->encoder_->encode_pixels(&scaled_spec, &scaled_buffer);
     if (error == camera::ENCODER_ERROR_SKIP_FRAME)
       return false;
     if (error == camera::ENCODER_ERROR_CONFIGURATION) {

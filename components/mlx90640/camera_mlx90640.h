@@ -70,6 +70,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   void set_encoder_quality(uint8_t quality) { this->encoder_quality_ = quality; }
   void set_encoder_buffer_size(size_t size) { this->encoder_buffer_size_ = size; }
   void set_encoder_buffer_expand_size(size_t size) { this->encoder_buffer_expand_size_ = size; }
+  void set_jpeg_scale(uint8_t scale) { this->scale_ = scale; }
 
   // Camera interface
   void add_listener(camera::CameraListener *listener) override { this->listeners_.push_back(listener); }
@@ -127,6 +128,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   camera_encoder::EncoderBufferImpl encoder_output_{};
   std::unique_ptr<camera::Encoder> encoder_{};
   uint8_t encoder_quality_{80};
+  uint8_t scale_{4};
   size_t encoder_buffer_size_{4096};
   size_t encoder_buffer_expand_size_{1024};
 
