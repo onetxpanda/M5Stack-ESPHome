@@ -113,7 +113,14 @@ void MLX90640::setup() {
 
   uint8_t refresh_rate = (this->refresh_rate_ >= 0) ? static_cast<uint8_t>(this->refresh_rate_) : 0x05;
   MLX90640_SetRefreshRate(this->address_, refresh_rate);
-  ESP_LOGI(TAG, "Refresh rate register set to 0x%02X", refresh_rate);
+  // Explicitly set chess mode and ADC resolution to match EEPROM calibration.
+  // SetRefreshRate only touches the rate field; if the control register was
+  // previously corrupted (e.g. by a bad firmware run) the mode and resolution
+  // bits could be wrong, causing wildly incorrect temperatures.
+  MLX90640_SetChessMode(this->address_);
+  MLX90640_SetResolution(this->address_, this->mlx90640_params_.resolutionEE);
+  ESP_LOGI(TAG, "Refresh rate register set to 0x%02X, resolutionEE=%u", refresh_rate,
+           (unsigned) this->mlx90640_params_.resolutionEE);
 
   this->interleaved_mode_ = MLX90640_GetCurMode(this->address_);
 
