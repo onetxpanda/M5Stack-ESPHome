@@ -72,6 +72,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   void set_encoder_buffer_size(size_t size) { this->encoder_buffer_size_ = size; }
   void set_encoder_buffer_expand_size(size_t size) { this->encoder_buffer_expand_size_ = size; }
   void set_jpeg_scale(uint8_t scale) { this->scale_ = scale; }
+  void set_iron_palette(bool v) { this->iron_palette_ = v; }
 
   // Camera interface
   void add_listener(camera::CameraListener *listener) override { this->listeners_.push_back(listener); }
@@ -84,18 +85,34 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   static constexpr uint8_t COLS = 32;
   static constexpr uint8_t ROWS = 24;
   bool is_data_valid() const { return this->data_valid_; }
-  /// Returns the iron-colormap colour for pixel (col, row). Safe to call from a display lambda.
+  bool is_iron_palette() const { return this->iron_palette_; }
+  /// Returns the colour for pixel (col, row). Safe to call from a display lambda.
+  /// In iron palette mode returns the mapped colour; in grayscale mode returns a gray Color.
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
-  /// Raw BGR888 pointer to the upscaled buffer (width = COLS*scale, height = ROWS*scale).
-  /// Valid after the first frame; layout is row-major, 3 bytes per pixel (B, G, R).
+  /// Raw upscaled pixel buffer (width = COLS*scale, height = ROWS*scale).
+  /// Iron palette mode: BGR888, 3 bytes/pixel (B, G, R). Grayscale mode: Y8, 1 byte/pixel.
+  /// This is the same buffer fed to the JPEG encoder.
   const uint8_t *get_upscaled_buffer() const {
     return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
   }
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
-  /// Raw RGB565 big-endian pointer to the upscaled buffer (width = COLS*scale, height = ROWS*scale).
-  /// Valid after the first frame; layout is row-major, 2 bytes per pixel, big-endian R5G6B5.
-  /// Pass to draw_pixels_at() with COLOR_ORDER_RGB, COLOR_BITNESS_565, big_endian=true.
+  /// Pixel format of the display buffer returned by get_display_buffer().
+  /// Iron palette mode: PIXEL_FORMAT_RGB565 (big-endian, pass big_endian=true to draw_pixels_at).
+  /// Grayscale mode: PIXEL_FORMAT_GRAYSCALE (8-bit Y, 1 byte/pixel).
+  camera::PixelFormat get_display_pixel_format() const {
+    return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
+  }
+  /// Returns the display-ready buffer. In iron palette mode this is the big-endian RGB565
+  /// buffer; in grayscale mode this is the Y8 buffer (same data as get_upscaled_buffer()).
+  /// Check get_display_pixel_format() to determine how to pass it to draw_pixels_at().
+  const uint8_t *get_display_buffer() const {
+    if (this->iron_palette_)
+      return this->rgb565_buffer_.get();
+    return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
+  }
+  /// Raw RGB565 big-endian pointer. Valid only in iron palette mode; returns nullptr in grayscale.
+  /// Prefer get_display_buffer() + get_display_pixel_format() for format-agnostic code.
   const uint8_t *get_rgb565_buffer() const { return this->rgb565_buffer_.get(); }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
     this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
@@ -139,9 +156,11 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   float mean_temp_{0.0f};
   float median_temp_{0.0f};
   bool data_valid_{false};
+  bool iron_palette_{true};
 
-  camera::CameraImageSpec image_spec_{COLS, ROWS, camera::PIXEL_FORMAT_BGR888};
-  camera::BufferImpl pixel_buffer_{&image_spec_};
+  // 32×24 per-pixel buffer. Iron palette: BGR888 (3 bytes/pixel). Grayscale: Y8 (1 byte/pixel).
+  // Allocated in setup() once iron_palette_ is known.
+  std::unique_ptr<camera::BufferImpl> pixel_buffer_{};
   camera_encoder::EncoderBufferImpl encoder_output_{};
   std::unique_ptr<camera::Encoder> encoder_{};
   uint8_t encoder_quality_{80};
