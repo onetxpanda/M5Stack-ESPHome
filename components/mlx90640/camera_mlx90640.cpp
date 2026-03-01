@@ -54,8 +54,10 @@ void MLX90640::setup() {
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(
       static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 3);
   const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
+  // Must be in DMA-capable internal SRAM: ESP32 DMA cannot read PSRAM, which
+  // would cause draw_pixels_at() to send zeros (black) on DMA-backed displays.
   this->rgb565_buffer_.reset(
-      static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
+      static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_DMA | MALLOC_CAP_8BIT)));
   if (!this->rgb565_buffer_) {
     ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer in PSRAM", static_cast<unsigned>(rgb565_size));
     this->mark_failed();
@@ -367,7 +369,15 @@ bool MLX90640::colormap_and_upscale_() {
     }
   }
 
-  this->on_frame_callbacks_.call();
+  // The sensor alternates subpages (0→1→0→1…) and on_frame_callbacks_ fire
+  // after every subpage — twice per full sensor cycle. draw_pixels_at() on a
+  // DMA-backed display can only handle one outstanding transfer per vsync, so
+  // two rapid callbacks cause every other frame to be black.  Only fire once
+  // per full cycle: when the subpage wraps back to 0 (transition 1→0).
+  const int subpage = MLX90640_GetSubPageNumber(this->frame_buffer_.data());
+  if (subpage == 0 && this->last_subpage_ == 1)
+    this->on_frame_callbacks_.call();
+  this->last_subpage_ = subpage;
   return true;
 }
 

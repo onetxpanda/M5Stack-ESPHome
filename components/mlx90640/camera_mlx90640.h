@@ -129,6 +129,7 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   std::array<IronColor, 256> colormap_lut_{};
 
   int interleaved_mode_{0};
+  int last_subpage_{-1};  // throttle on_frame to one callback per subpage pair
   paramsMLX90640 mlx90640_params_{};
   std::array<float, PIXEL_COUNT> pixels_{};
   std::array<uint16_t, 834> frame_buffer_{};
