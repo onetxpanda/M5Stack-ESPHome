@@ -48,24 +48,12 @@ void MLX90640::setup() {
       ->set_buffer_expand_size(this->encoder_buffer_expand_size_);
 #endif
 
-  const camera::PixelFormat fmt =
-      this->iron_palette_ ? camera::PIXEL_FORMAT_BGR888 : camera::PIXEL_FORMAT_GRAYSCALE;
-  this->pixel_buffer_ = std::make_unique<camera::BufferImpl>(PIXEL_COUNT * (this->iron_palette_ ? 3u : 1u));
-  this->scaled_spec_ = {static_cast<uint16_t>(COLS * this->scale_),
-                        static_cast<uint16_t>(ROWS * this->scale_),
-                        fmt};
+  this->scaled_spec_ = {
+      static_cast<uint16_t>(COLS * this->scale_),
+      static_cast<uint16_t>(ROWS * this->scale_),
+      this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE,
+  };
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(this->scaled_spec_.bytes_per_image());
-
-  if (this->iron_palette_) {
-    const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
-    this->rgb565_buffer_.reset(
-        static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
-    if (!this->rgb565_buffer_) {
-      ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer", static_cast<unsigned>(rgb565_size));
-      this->mark_failed();
-      return;
-    }
-  }
 
   MLX90640_I2CInit(this);
   int status = 0;
@@ -341,50 +329,31 @@ bool MLX90640::colormap_and_upscale_() {
   this->data_valid_ = true;
 
   const float span = std::max(this->maxtemp_ - this->mintemp_, 1.0f);
-  const float inv_span = 255.0f / span;  // precompute: replaces per-pixel FP divide with multiply
-  uint8_t *pixel_data = this->pixel_buffer_->get_data_buffer();
+  const float inv_span = 255.0f / span;
+  uint8_t *dst = this->scaled_buffer_->get_data_buffer();
   const uint16_t scaled_w = this->scaled_spec_.width;
   const uint16_t scaled_h = this->scaled_spec_.height;
 
   if (this->iron_palette_) {
-    for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
-      float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
-      uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
-      const IronColor &c = this->colormap_lut_[v];
-      pixel_data[idx * 3 + 0] = c.b;  // PIXEL_FORMAT_BGR888: B, G, R
-      pixel_data[idx * 3 + 1] = c.g;
-      pixel_data[idx * 3 + 2] = c.r;
-    }
-    // Upscale into scaled_buffer_ (BGR888 for JPEG) and rgb565_buffer_ (big-endian RGB565
-    // for direct display use) simultaneously.
-    uint8_t *dst = this->scaled_buffer_->get_data_buffer();
-    uint8_t *dst565 = this->rgb565_buffer_.get();
-    const uint8_t *src = pixel_data;
+    // Map and upscale in one pass → big-endian RGB565 for both JPEG encoder and draw_pixels_at.
     for (uint16_t oy = 0; oy < scaled_h; oy++) {
-      const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
       for (uint16_t ox = 0; ox < scaled_w; ox++) {
-        const uint8_t *p = src_row + (ox / this->scale_) * 3;
-        *dst++ = p[0];
-        *dst++ = p[1];
-        *dst++ = p[2];
-        // p is [B, G, R] → RGB565 big-endian
-        uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
-        *dst565++ = px >> 8;
-        *dst565++ = px & 0xFF;
+        float clamped = std::clamp(this->pixels_[(oy / this->scale_) * COLS + (ox / this->scale_)],
+                                   this->mintemp_, this->maxtemp_);
+        uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
+        const IronColor &c = this->colormap_lut_[v];
+        uint16_t px = ((uint16_t)(c.r & 0xF8) << 8) | ((uint16_t)(c.g & 0xFC) << 3) | (c.b >> 3);
+        *dst++ = px >> 8;
+        *dst++ = px & 0xFF;
       }
     }
   } else {
-    for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
-      float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
-      pixel_data[idx] = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
-    }
-    // Upscale Y8 into scaled_buffer_ (used by both JPEG encoder and display).
-    uint8_t *dst = this->scaled_buffer_->get_data_buffer();
-    const uint8_t *src = pixel_data;
+    // Map and upscale in one pass → Y8 for both JPEG encoder and draw_pixels_at.
     for (uint16_t oy = 0; oy < scaled_h; oy++) {
-      const uint8_t *src_row = src + (oy / this->scale_) * COLS;
       for (uint16_t ox = 0; ox < scaled_w; ox++) {
-        *dst++ = src_row[ox / this->scale_];
+        float clamped = std::clamp(this->pixels_[(oy / this->scale_) * COLS + (ox / this->scale_)],
+                                   this->mintemp_, this->maxtemp_);
+        *dst++ = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
       }
     }
   }
@@ -458,15 +427,14 @@ bool MLX90640::is_data_ready_() {
 esphome::Color MLX90640::get_pixel_color(uint8_t col, uint8_t row) {
   if (col >= COLS || row >= ROWS || !this->data_valid_)
     return esphome::Color(0, 0, 0);
-  size_t idx = row * COLS + col;
-  const uint8_t *buf = this->pixel_buffer_->get_data_buffer();
+  float clamped = std::clamp(this->pixels_[row * COLS + col], this->mintemp_, this->maxtemp_);
+  const float span = std::max(this->maxtemp_ - this->mintemp_, 1.0f);
+  uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * 255.0f / span));
   if (this->iron_palette_) {
-    // pixel_buffer_ is BGR888: byte order B, G, R
-    return esphome::Color(buf[idx * 3 + 2], buf[idx * 3 + 1], buf[idx * 3 + 0]);
-  } else {
-    uint8_t v = buf[idx];
-    return esphome::Color(v, v, v);
+    const IronColor &c = this->colormap_lut_[v];
+    return esphome::Color(c.r, c.g, c.b);
   }
+  return esphome::Color(v, v, v);
 }
 
 }  // namespace mlx90640

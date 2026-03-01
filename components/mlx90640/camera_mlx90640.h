@@ -13,7 +13,9 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
-#include "esp_heap_caps.h"
+#ifdef USE_DISPLAY
+#include "esphome/components/display/display_buffer.h"
+#endif
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 
@@ -89,31 +91,25 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   /// Returns the colour for pixel (col, row). Safe to call from a display lambda.
   /// In iron palette mode returns the mapped colour; in grayscale mode returns a gray Color.
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
-  /// Raw upscaled pixel buffer (width = COLS*scale, height = ROWS*scale).
-  /// Iron palette mode: BGR888, 3 bytes/pixel (B, G, R). Grayscale mode: Y8, 1 byte/pixel.
-  /// This is the same buffer fed to the JPEG encoder.
-  const uint8_t *get_upscaled_buffer() const {
-    return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
-  }
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
-  /// Pixel format of the display buffer returned by get_display_buffer().
-  /// Iron palette mode: PIXEL_FORMAT_RGB565 (big-endian, pass big_endian=true to draw_pixels_at).
-  /// Grayscale mode: PIXEL_FORMAT_GRAYSCALE (8-bit Y, 1 byte/pixel).
+  /// Pixel format of the buffer returned by get_display_buffer().
+  /// Iron palette: PIXEL_FORMAT_RGB565 (COLOR_ORDER_RGB, COLOR_BITNESS_565, big_endian=true).
+  /// Grayscale:    PIXEL_FORMAT_GRAYSCALE (COLOR_BITNESS_8, big_endian=false).
   camera::PixelFormat get_display_pixel_format() const {
     return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
-  /// Returns the display-ready buffer. In iron palette mode this is the big-endian RGB565
-  /// buffer; in grayscale mode this is the Y8 buffer (same data as get_upscaled_buffer()).
-  /// Check get_display_pixel_format() to determine how to pass it to draw_pixels_at().
+#ifdef USE_DISPLAY
+  /// Color order for draw_pixels_at(). Always COLOR_ORDER_RGB for both iron palette and grayscale.
+  display::ColorOrder get_display_color_order() const { return display::COLOR_ORDER_RGB; }
+#endif
+  /// Whether the display buffer is stored big-endian. Always true for iron palette (RGB565),
+  /// always false for grayscale (Y8). Pass directly as the big_endian argument of draw_pixels_at().
+  bool get_display_big_endian() const { return this->iron_palette_; }
+  /// Upscaled pixel buffer ready for draw_pixels_at(). Valid after the first frame.
   const uint8_t *get_display_buffer() const {
-    if (this->iron_palette_)
-      return this->rgb565_buffer_.get();
     return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
   }
-  /// Raw RGB565 big-endian pointer. Valid only in iron palette mode; returns nullptr in grayscale.
-  /// Prefer get_display_buffer() + get_display_pixel_format() for format-agnostic code.
-  const uint8_t *get_rgb565_buffer() const { return this->rgb565_buffer_.get(); }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
     this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
   }
@@ -158,9 +154,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   bool data_valid_{false};
   bool iron_palette_{true};
 
-  // 32×24 per-pixel buffer. Iron palette: BGR888 (3 bytes/pixel). Grayscale: Y8 (1 byte/pixel).
-  // Allocated in setup() once iron_palette_ is known.
-  std::unique_ptr<camera::BufferImpl> pixel_buffer_{};
   camera_encoder::EncoderBufferImpl encoder_output_{};
   std::unique_ptr<camera::Encoder> encoder_{};
   uint8_t encoder_quality_{80};
@@ -170,9 +163,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
   std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
-  // Allocated explicitly in PSRAM via heap_caps_malloc; deleter calls heap_caps_free.
-  struct PsramDeleter { void operator()(uint8_t *p) const { heap_caps_free(p); } };
-  std::unique_ptr<uint8_t[], PsramDeleter> rgb565_buffer_{};
 
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
