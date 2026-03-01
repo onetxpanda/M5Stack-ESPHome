@@ -48,18 +48,23 @@ void MLX90640::setup() {
       ->set_buffer_expand_size(this->encoder_buffer_expand_size_);
 #endif
 
+  const camera::PixelFormat fmt =
+      this->iron_palette_ ? camera::PIXEL_FORMAT_BGR888 : camera::PIXEL_FORMAT_GRAYSCALE;
+  this->pixel_buffer_ = std::make_unique<camera::BufferImpl>(PIXEL_COUNT * (this->iron_palette_ ? 3u : 1u));
   this->scaled_spec_ = {static_cast<uint16_t>(COLS * this->scale_),
                         static_cast<uint16_t>(ROWS * this->scale_),
-                        camera::PIXEL_FORMAT_BGR888};
-  this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(
-      static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 3);
-  const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
-  this->rgb565_buffer_.reset(
-      static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
-  if (!this->rgb565_buffer_) {
-    ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer in PSRAM", static_cast<unsigned>(rgb565_size));
-    this->mark_failed();
-    return;
+                        fmt};
+  this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(this->scaled_spec_.bytes_per_image());
+
+  if (this->iron_palette_) {
+    const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
+    this->rgb565_buffer_.reset(
+        static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
+    if (!this->rgb565_buffer_) {
+      ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer", static_cast<unsigned>(rgb565_size));
+      this->mark_failed();
+      return;
+    }
   }
 
   MLX90640_I2CInit(this);
@@ -141,6 +146,7 @@ void MLX90640::dump_config() {
   ESP_LOGCONFIG(TAG, "  Filter level: %.2f", this->filter_level_);
   ESP_LOGCONFIG(TAG, "  Refresh rate: 0x%02X", this->refresh_rate_ >= 0 ? this->refresh_rate_ : 0x05);
   ESP_LOGCONFIG(TAG, "  JPEG quality: %u", this->encoder_quality_);
+  ESP_LOGCONFIG(TAG, "  Palette: %s", this->iron_palette_ ? "iron" : "grayscale");
   ESP_LOGCONFIG(TAG, "  JPEG scale: %ux (%ux%u)", this->scale_, COLS * this->scale_, ROWS * this->scale_);
   ESP_LOGCONFIG(TAG, "  JPEG buffer size: %u", static_cast<unsigned>(this->encoder_buffer_size_));
   ESP_LOGCONFIG(TAG, "  JPEG buffer expand size: %u", static_cast<unsigned>(this->encoder_buffer_expand_size_));
@@ -336,38 +342,65 @@ bool MLX90640::colormap_and_upscale_() {
 
   const float span = std::max(this->maxtemp_ - this->mintemp_, 1.0f);
   const float inv_span = 255.0f / span;  // precompute: replaces per-pixel FP divide with multiply
-  uint8_t *pixel_data = this->pixel_buffer_.get_data_buffer();
-  for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
-    float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
-    uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
-    const IronColor &c = this->colormap_lut_[v];
-    pixel_data[idx * 3 + 0] = c.b;  // PIXEL_FORMAT_BGR888: B, G, R
-    pixel_data[idx * 3 + 1] = c.g;
-    pixel_data[idx * 3 + 2] = c.r;
-  }
-
-  // Upscale pixel_buffer_ into scaled_buffer_ (BGR888 for JPEG) and
-  // rgb565_buffer_ (big-endian RGB565 for direct display use) simultaneously.
-  uint8_t *dst = this->scaled_buffer_->get_data_buffer();
-  uint8_t *dst565 = this->rgb565_buffer_.get();
-  const uint8_t *src = this->pixel_buffer_.get_data_buffer();
+  uint8_t *pixel_data = this->pixel_buffer_->get_data_buffer();
   const uint16_t scaled_w = this->scaled_spec_.width;
   const uint16_t scaled_h = this->scaled_spec_.height;
-  for (uint16_t oy = 0; oy < scaled_h; oy++) {
-    const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
-    for (uint16_t ox = 0; ox < scaled_w; ox++) {
-      const uint8_t *p = src_row + (ox / this->scale_) * 3;
-      *dst++ = p[0];
-      *dst++ = p[1];
-      *dst++ = p[2];
-      // p is [B, G, R] → RGB565 big-endian
-      uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
-      *dst565++ = px >> 8;
-      *dst565++ = px & 0xFF;
+
+  if (this->iron_palette_) {
+    for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
+      float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
+      uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
+      const IronColor &c = this->colormap_lut_[v];
+      pixel_data[idx * 3 + 0] = c.b;  // PIXEL_FORMAT_BGR888: B, G, R
+      pixel_data[idx * 3 + 1] = c.g;
+      pixel_data[idx * 3 + 2] = c.r;
+    }
+    // Upscale into scaled_buffer_ (BGR888 for JPEG) and rgb565_buffer_ (big-endian RGB565
+    // for direct display use) simultaneously.
+    uint8_t *dst = this->scaled_buffer_->get_data_buffer();
+    uint8_t *dst565 = this->rgb565_buffer_.get();
+    const uint8_t *src = pixel_data;
+    for (uint16_t oy = 0; oy < scaled_h; oy++) {
+      const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
+      for (uint16_t ox = 0; ox < scaled_w; ox++) {
+        const uint8_t *p = src_row + (ox / this->scale_) * 3;
+        *dst++ = p[0];
+        *dst++ = p[1];
+        *dst++ = p[2];
+        // p is [B, G, R] → RGB565 big-endian
+        uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
+        *dst565++ = px >> 8;
+        *dst565++ = px & 0xFF;
+      }
+    }
+  } else {
+    for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
+      float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
+      pixel_data[idx] = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
+    }
+    // Upscale Y8 into scaled_buffer_ (used by both JPEG encoder and display).
+    uint8_t *dst = this->scaled_buffer_->get_data_buffer();
+    const uint8_t *src = pixel_data;
+    for (uint16_t oy = 0; oy < scaled_h; oy++) {
+      const uint8_t *src_row = src + (oy / this->scale_) * COLS;
+      for (uint16_t ox = 0; ox < scaled_w; ox++) {
+        *dst++ = src_row[ox / this->scale_];
+      }
     }
   }
 
-  this->on_frame_callbacks_.call();
+  // The sensor alternates subpages (0→1→0→1…) so on_frame_callbacks_ would
+  // fire twice per full sensor cycle (~31 ms apart at 16 Hz). A blocking SPI
+  // push to a 320×240 display at 40 MHz takes ~30 ms, leaving almost no gap
+  // between consecutive display.update() calls. Display drivers track internal
+  // state (window address, DMA completion) between calls; two back-to-back
+  // updates with only ~1 ms headroom corrupt that state on alternating frames,
+  // producing black. Only fire once per full cycle (transition 1→0) to give
+  // the display the full ~62 ms inter-frame gap it needs.
+  const int subpage = MLX90640_GetSubPageNumber(this->frame_buffer_.data());
+  if (subpage == 0 && this->last_subpage_ == 1)
+    this->on_frame_callbacks_.call();
+  this->last_subpage_ = subpage;
   return true;
 }
 
@@ -426,9 +459,14 @@ esphome::Color MLX90640::get_pixel_color(uint8_t col, uint8_t row) {
   if (col >= COLS || row >= ROWS || !this->data_valid_)
     return esphome::Color(0, 0, 0);
   size_t idx = row * COLS + col;
-  const uint8_t *p = this->pixel_buffer_.get_data_buffer() + idx * 3;
-  // pixel_buffer_ is BGR888: byte order B, G, R
-  return esphome::Color(p[2], p[1], p[0]);
+  const uint8_t *buf = this->pixel_buffer_->get_data_buffer();
+  if (this->iron_palette_) {
+    // pixel_buffer_ is BGR888: byte order B, G, R
+    return esphome::Color(buf[idx * 3 + 2], buf[idx * 3 + 1], buf[idx * 3 + 0]);
+  } else {
+    uint8_t v = buf[idx];
+    return esphome::Color(v, v, v);
+  }
 }
 
 }  // namespace mlx90640

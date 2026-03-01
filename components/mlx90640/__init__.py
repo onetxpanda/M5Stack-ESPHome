@@ -27,6 +27,7 @@ CONF_FILTER_LEVEL = "filter_level"
 CONF_BUFFER_EXPAND_SIZE = "buffer_expand_size"
 CONF_JPEG_QUALITY = "jpeg_quality"
 CONF_JPEG_SCALE = "jpeg_scale"
+CONF_IRON_PALETTE = "iron_palette"
 
 DEPENDENCIES = ["i2c", "esp32"]
 AUTO_LOAD = ["sensor", "camera", "camera_encoder", "socket"]
@@ -43,6 +44,7 @@ CONFIG_SCHEMA = (
             cv.Required(CONF_MINTEMP): cv.float_,
             cv.Optional(CONF_REFRESH_RATE): cv.int_range(min=0, max=7),
             cv.Optional(CONF_FILTER_LEVEL): cv.float_,
+            cv.Optional(CONF_IRON_PALETTE, default=True): cv.boolean,
             cv.Optional(CONF_JPEG_QUALITY, default=80): cv.int_range(min=1, max=100),
             cv.Optional(CONF_JPEG_SCALE, default=4): cv.int_range(min=1, max=10),
             cv.Optional(CONF_BUFFER_SIZE): cv.int_range(min=1024, max=2 * 1024 * 1024),
@@ -94,9 +96,12 @@ async def to_code(config):
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
     scale = config[CONF_JPEG_SCALE]
+    iron_palette = config[CONF_IRON_PALETTE]
+    cg.add(var.set_iron_palette(iron_palette))
     # JPEG output can never exceed the uncompressed pixel size, so use that as
     # the automatic upper bound. Users can still override with buffer_size.
-    auto_buffer_size = 32 * scale * 24 * scale * 3
+    bpp = 3 if iron_palette else 1
+    auto_buffer_size = 32 * scale * 24 * scale * bpp
     buffer_size = config.get(CONF_BUFFER_SIZE, auto_buffer_size)
     cg.add(var.set_encoder_quality(config[CONF_JPEG_QUALITY]))
     cg.add(var.set_encoder_buffer_size(buffer_size))
