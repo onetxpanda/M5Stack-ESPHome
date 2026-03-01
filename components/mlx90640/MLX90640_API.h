@@ -73,9 +73,10 @@
 #define MLX90640_NIBBLE3(reg16) ((reg16 & MLX90640_NIBBLE3_MASK) >> 8)
 #define MLX90640_NIBBLE4(reg16) ((reg16 & MLX90640_NIBBLE4_MASK) >> 12)
 
-// Use (float)(1 << n) instead of pow(2, n) — avoids libm log/exp, no includes needed.
-// All callers use exponent values in range 0..18 so int shift is safe.
-#define POW2(x) ((float)(1 << (int)(x)))
+// ldexpf(1.0f, n) = 1.0f * 2^n via IEEE754 exponent adjust — avoids libm pow() log/exp.
+// Handles exponents up to 127; callers use values up to ~45 (alphaScale = NIBBLE4+30).
+// ldexpf is in <math.h>, which MLX90640_API.cpp includes before this macro is expanded.
+#define POW2(x) ldexpf(1.0f, (int)(x))
 
 #define SCALEALPHA 0.000001f
     
