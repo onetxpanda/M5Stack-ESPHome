@@ -367,11 +367,14 @@ bool MLX90640::colormap_and_upscale_() {
     }
   }
 
-  // The sensor alternates subpages (0→1→0→1…) and on_frame_callbacks_ fire
-  // after every subpage — twice per full sensor cycle. draw_pixels_at() on a
-  // DMA-backed display can only handle one outstanding transfer per vsync, so
-  // two rapid callbacks cause every other frame to be black.  Only fire once
-  // per full cycle: when the subpage wraps back to 0 (transition 1→0).
+  // The sensor alternates subpages (0→1→0→1…) so on_frame_callbacks_ would
+  // fire twice per full sensor cycle (~31 ms apart at 16 Hz). A blocking SPI
+  // push to a 320×240 display at 40 MHz takes ~30 ms, leaving almost no gap
+  // between consecutive display.update() calls. Display drivers track internal
+  // state (window address, DMA completion) between calls; two back-to-back
+  // updates with only ~1 ms headroom corrupt that state on alternating frames,
+  // producing black. Only fire once per full cycle (transition 1→0) to give
+  // the display the full ~62 ms inter-frame gap it needs.
   const int subpage = MLX90640_GetSubPageNumber(this->frame_buffer_.data());
   if (subpage == 0 && this->last_subpage_ == 1)
     this->on_frame_callbacks_.call();
