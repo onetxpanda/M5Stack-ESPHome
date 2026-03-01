@@ -423,10 +423,10 @@ void MLX90640_CalculateTo(uint16_t *frameData, const paramsMLX90640 *params, flo
     vdd = MLX90640_GetVdd(frameData, params);
     ta = MLX90640_GetTa(frameData, params);
     
-    ta4 = (ta + 273.15);
+    ta4 = (ta + 273.15f);
     ta4 = ta4 * ta4;
     ta4 = ta4 * ta4;
-    tr4 = (tr + 273.15);
+    tr4 = (tr + 273.15f);
     tr4 = tr4 * tr4;
     tr4 = tr4 * tr4;
     taTr = tr4 - (tr4-ta4)/emissivity;
@@ -444,27 +444,27 @@ void MLX90640_CalculateTo(uint16_t *frameData, const paramsMLX90640 *params, flo
     
     gain = (float)params->gainEE / (int16_t)frameData[778]; 
   
-//------------------------- To calculation -------------------------------------    
+//------------------------- To calculation -------------------------------------
     mode = (frameData[832] & MLX90640_CTRL_MEAS_MODE_MASK) >> 5;
-    
+
     irDataCP[0] = (int16_t)frameData[776] * gain;
     irDataCP[1] = (int16_t)frameData[808] * gain;
-    
-    irDataCP[0] = irDataCP[0] - params->cpOffset[0] * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+
+    irDataCP[0] = irDataCP[0] - params->cpOffset[0] * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     if( mode ==  params->calibrationModeEE)
     {
-        irDataCP[1] = irDataCP[1] - params->cpOffset[1] * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+        irDataCP[1] = irDataCP[1] - params->cpOffset[1] * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     }
     else
     {
-      irDataCP[1] = irDataCP[1] - (params->cpOffset[1] + params->ilChessC[0]) * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+      irDataCP[1] = irDataCP[1] - (params->cpOffset[1] + params->ilChessC[0]) * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     }
 
     for( int pixelNumber = 0; pixelNumber < 768; pixelNumber++)
     {
-        ilPattern = pixelNumber / 32 - (pixelNumber / 64) * 2; 
-        chessPattern = ilPattern ^ (pixelNumber - (pixelNumber/2)*2); 
-        conversionPattern = ((pixelNumber + 2) / 4 - (pixelNumber + 3) / 4 + (pixelNumber + 1) / 4 - pixelNumber / 4) * (1 - 2 * ilPattern);
+        ilPattern = (pixelNumber >> 5) & 1;
+        chessPattern = ilPattern ^ (pixelNumber & 1);
+        conversionPattern = (((pixelNumber + 2) >> 2) - ((pixelNumber + 3) >> 2) + ((pixelNumber + 1) >> 2) - (pixelNumber >> 2)) * (1 - 2 * ilPattern);
         
         if(mode == 0)
         {
@@ -481,23 +481,23 @@ void MLX90640_CalculateTo(uint16_t *frameData, const paramsMLX90640 *params, flo
             
             kta = params->kta[pixelNumber]/ktaScale;
             kv = params->kv[pixelNumber]/kvScale;
-            irData = irData - params->offset[pixelNumber]*(1 + kta*(ta - 25))*(1 + kv*(vdd - 3.3));
-            
+            irData = irData - params->offset[pixelNumber]*(1 + kta*(ta - 25.0f))*(1 + kv*(vdd - 3.3f));
+
             if(mode !=  params->calibrationModeEE)
             {
-              irData = irData + params->ilChessC[2] * (2 * ilPattern - 1) - params->ilChessC[1] * conversionPattern; 
-            }                       
-    
+              irData = irData + params->ilChessC[2] * (2 * ilPattern - 1) - params->ilChessC[1] * conversionPattern;
+            }
+
             irData = irData - params->tgc * irDataCP[subPage];
             irData = irData / emissivity;
-            
+
             alphaCompensated = SCALEALPHA*alphaScale/params->alpha[pixelNumber];
-            alphaCompensated = alphaCompensated*(1 + params->KsTa * (ta - 25));
-                        
+            alphaCompensated = alphaCompensated*(1 + params->KsTa * (ta - 25.0f));
+
             Sx = alphaCompensated * alphaCompensated * alphaCompensated * (irData + alphaCompensated * taTr);
-            Sx = sqrt(sqrt(Sx)) * params->ksTo[1];            
-            
-            To = sqrt(sqrt(irData/(alphaCompensated * (1 - params->ksTo[1] * 273.15) + Sx) + taTr)) - 273.15;                     
+            Sx = sqrtf(sqrtf(Sx)) * params->ksTo[1];
+
+            To = sqrtf(sqrtf(irData/(alphaCompensated * (1 - params->ksTo[1] * 273.15f) + Sx) + taTr)) - 273.15f;                     
                     
             if(To < params->ct[1])
             {
@@ -516,7 +516,7 @@ void MLX90640_CalculateTo(uint16_t *frameData, const paramsMLX90640 *params, flo
                 range = 3;            
             }      
             
-            To = sqrt(sqrt(irData / (alphaCompensated * alphaCorrR[range] * (1 + params->ksTo[range] * (To - params->ct[range]))) + taTr)) - 273.15;
+            To = sqrtf(sqrtf(irData / (alphaCompensated * alphaCorrR[range] * (1 + params->ksTo[range] * (To - params->ct[range]))) + taTr)) - 273.15f;
                         
             result[pixelNumber] = To;
         }
@@ -556,28 +556,28 @@ void MLX90640_GetImage(uint16_t *frameData, const paramsMLX90640 *params, float 
     
     gain = (float)params->gainEE / (int16_t)frameData[778]; 
   
-//------------------------- Image calculation -------------------------------------    
-    
+//------------------------- Image calculation -------------------------------------
+
     mode = (frameData[832] & MLX90640_CTRL_MEAS_MODE_MASK) >> 5;
-    
+
     irDataCP[0] = (int16_t)frameData[776] * gain;
     irDataCP[1] = (int16_t)frameData[808] * gain;
-    
-    irDataCP[0] = irDataCP[0] - params->cpOffset[0] * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+
+    irDataCP[0] = irDataCP[0] - params->cpOffset[0] * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     if( mode ==  params->calibrationModeEE)
     {
-        irDataCP[1] = irDataCP[1] - params->cpOffset[1] * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+        irDataCP[1] = irDataCP[1] - params->cpOffset[1] * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     }
     else
     {
-      irDataCP[1] = irDataCP[1] - (params->cpOffset[1] + params->ilChessC[0]) * (1 + params->cpKta * (ta - 25)) * (1 + params->cpKv * (vdd - 3.3));
+      irDataCP[1] = irDataCP[1] - (params->cpOffset[1] + params->ilChessC[0]) * (1 + params->cpKta * (ta - 25.0f)) * (1 + params->cpKv * (vdd - 3.3f));
     }
 
     for( int pixelNumber = 0; pixelNumber < 768; pixelNumber++)
     {
-        ilPattern = pixelNumber / 32 - (pixelNumber / 64) * 2; 
-        chessPattern = ilPattern ^ (pixelNumber - (pixelNumber/2)*2); 
-        conversionPattern = ((pixelNumber + 2) / 4 - (pixelNumber + 3) / 4 + (pixelNumber + 1) / 4 - pixelNumber / 4) * (1 - 2 * ilPattern);
+        ilPattern = (pixelNumber >> 5) & 1;
+        chessPattern = ilPattern ^ (pixelNumber & 1);
+        conversionPattern = (((pixelNumber + 2) >> 2) - ((pixelNumber + 3) >> 2) + ((pixelNumber + 1) >> 2) - (pixelNumber >> 2)) * (1 - 2 * ilPattern);
         
         if(mode == 0)
         {
@@ -594,7 +594,7 @@ void MLX90640_GetImage(uint16_t *frameData, const paramsMLX90640 *params, float 
             
             kta = params->kta[pixelNumber]/ktaScale;
             kv = params->kv[pixelNumber]/kvScale;
-            irData = irData - params->offset[pixelNumber]*(1 + kta*(ta - 25))*(1 + kv*(vdd - 3.3));
+            irData = irData - params->offset[pixelNumber]*(1 + kta*(ta - 25.0f))*(1 + kv*(vdd - 3.3f));
 
             if(mode !=  params->calibrationModeEE)
             {
@@ -623,7 +623,7 @@ float MLX90640_GetVdd(uint16_t *frameData, const paramsMLX90640 *params)
     
     resolutionRAM = (frameData[832] & ~MLX90640_CTRL_RESOLUTION_MASK) >> MLX90640_CTRL_RESOLUTION_SHIFT;   
     resolutionCorrection = POW2(params->resolutionEE) / POW2(resolutionRAM);
-    vdd = (resolutionCorrection * (int16_t)frameData[810] - params->vdd25) / params->kVdd + 3.3;
+    vdd = (resolutionCorrection * (int16_t)frameData[810] - params->vdd25) / params->kVdd + 3.3f;
     
     return vdd;
 }
@@ -643,8 +643,8 @@ float MLX90640_GetTa(uint16_t *frameData, const paramsMLX90640 *params)
     
     ptatArt = (ptat / (ptat * params->alphaPTAT + (int16_t)frameData[768])) * POW2(18);
     
-    ta = (ptatArt / (1 + params->KvPTAT * (vdd - 3.3)) - params->vPTAT25);
-    ta = ta / params->KtPTAT + 25;
+    ta = (ptatArt / (1 + params->KvPTAT * (vdd - 3.3f)) - params->vPTAT25);
+    ta = ta / params->KtPTAT + 25.0f;
     
     return ta;
 }
