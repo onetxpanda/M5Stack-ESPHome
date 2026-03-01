@@ -13,6 +13,9 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
+#ifdef USE_DISPLAY
+#include "esphome/components/display/display_buffer.h"
+#endif
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 
@@ -96,6 +99,10 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   camera::PixelFormat get_display_pixel_format() const {
     return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
+#ifdef USE_DISPLAY
+  /// Color order for draw_pixels_at(). Always COLOR_ORDER_RGB for both iron palette and grayscale.
+  display::ColorOrder get_display_color_order() const { return display::COLOR_ORDER_RGB; }
+#endif
   /// Whether the display buffer is stored big-endian. Always true for iron palette (RGB565),
   /// always false for grayscale (Y8). Pass directly as the big_endian argument of draw_pixels_at().
   bool get_display_big_endian() const { return this->iron_palette_; }
