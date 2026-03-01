@@ -13,7 +13,6 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
-#include "esp_heap_caps.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 
@@ -89,19 +88,13 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   /// Returns the colour for pixel (col, row). Safe to call from a display lambda.
   /// In iron palette mode returns the mapped colour; in grayscale mode returns a gray Color.
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
-  /// Raw upscaled pixel buffer (width = COLS*scale, height = ROWS*scale).
-  /// Iron palette mode: BGR888, 3 bytes/pixel (B, G, R). Grayscale mode: Y8, 1 byte/pixel.
-  /// This is the same buffer fed to the JPEG encoder.
-  const uint8_t *get_upscaled_buffer() const {
-    return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
-  }
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
-  /// Pixel format of the display buffer returned by get_display_buffer().
-  /// Iron palette mode: PIXEL_FORMAT_BGR888 (3 bytes/pixel, B G R; pass COLOR_ORDER_BGR to draw_pixels_at).
+  /// Pixel format of the buffer returned by get_display_buffer().
+  /// Iron palette mode: PIXEL_FORMAT_RGB565 (big-endian R5G6B5; pass big_endian=true to draw_pixels_at).
   /// Grayscale mode: PIXEL_FORMAT_GRAYSCALE (8-bit Y, 1 byte/pixel).
   camera::PixelFormat get_display_pixel_format() const {
-    return this->iron_palette_ ? camera::PIXEL_FORMAT_BGR888 : camera::PIXEL_FORMAT_GRAYSCALE;
+    return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
   /// Upscaled pixel buffer ready for draw_pixels_at(). Use get_display_pixel_format() to
   /// determine the correct ColorOrder/ColorBitness arguments to pass. Valid after the first frame.
@@ -152,9 +145,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   bool data_valid_{false};
   bool iron_palette_{true};
 
-  // 32×24 per-pixel buffer. Iron palette: BGR888 (3 bytes/pixel). Grayscale: Y8 (1 byte/pixel).
-  // Allocated in setup() once iron_palette_ is known.
-  std::unique_ptr<camera::BufferImpl> pixel_buffer_{};
   camera_encoder::EncoderBufferImpl encoder_output_{};
   std::unique_ptr<camera::Encoder> encoder_{};
   uint8_t encoder_quality_{80};
