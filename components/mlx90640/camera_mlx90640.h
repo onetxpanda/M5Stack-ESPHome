@@ -14,7 +14,7 @@
 #include "esphome/core/color.h"
 #include "esphome/core/component.h"
 #ifdef USE_DISPLAY
-#include "esphome/components/display/display_buffer.h"
+#include "esphome/components/display/display_color_utils.h"
 #endif
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
