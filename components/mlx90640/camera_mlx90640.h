@@ -93,15 +93,17 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   esphome::Color get_pixel_color(uint8_t col, uint8_t row);
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
-  /// Pixel format of the buffer returned by get_display_buffer().
-  /// Iron palette: PIXEL_FORMAT_RGB565 (COLOR_ORDER_RGB, COLOR_BITNESS_565, big_endian=true).
-  /// Grayscale:    PIXEL_FORMAT_GRAYSCALE (COLOR_BITNESS_8, big_endian=false).
+  /// camera::PixelFormat of the display buffer (for camera pipeline use, not draw_pixels_at).
   camera::PixelFormat get_display_pixel_format() const {
     return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
 #ifdef USE_DISPLAY
-  /// Color order for draw_pixels_at(). Always COLOR_ORDER_RGB for both iron palette and grayscale.
+  /// Color order for draw_pixels_at(). Always COLOR_ORDER_RGB for both modes.
   display::ColorOrder get_display_color_order() const { return display::COLOR_ORDER_RGB; }
+  /// Color bitness for draw_pixels_at(). COLOR_BITNESS_565 (iron palette) or COLOR_BITNESS_332 (grayscale).
+  display::ColorBitness get_display_color_bitness() const {
+    return this->iron_palette_ ? display::COLOR_BITNESS_565 : display::COLOR_BITNESS_332;
+  }
 #endif
   /// Whether the display buffer is stored big-endian. Always true for iron palette (RGB565),
   /// always false for grayscale (Y8). Pass directly as the big_endian argument of draw_pixels_at().
