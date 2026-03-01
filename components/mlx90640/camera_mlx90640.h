@@ -98,22 +98,16 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
   /// Pixel format of the display buffer returned by get_display_buffer().
-  /// Iron palette mode: PIXEL_FORMAT_RGB565 (big-endian, pass big_endian=true to draw_pixels_at).
+  /// Iron palette mode: PIXEL_FORMAT_BGR888 (3 bytes/pixel, B G R; pass COLOR_ORDER_BGR to draw_pixels_at).
   /// Grayscale mode: PIXEL_FORMAT_GRAYSCALE (8-bit Y, 1 byte/pixel).
   camera::PixelFormat get_display_pixel_format() const {
-    return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
+    return this->iron_palette_ ? camera::PIXEL_FORMAT_BGR888 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
-  /// Returns the display-ready buffer. In iron palette mode this is the big-endian RGB565
-  /// buffer; in grayscale mode this is the Y8 buffer (same data as get_upscaled_buffer()).
-  /// Check get_display_pixel_format() to determine how to pass it to draw_pixels_at().
+  /// Upscaled pixel buffer ready for draw_pixels_at(). Use get_display_pixel_format() to
+  /// determine the correct ColorOrder/ColorBitness arguments to pass. Valid after the first frame.
   const uint8_t *get_display_buffer() const {
-    if (this->iron_palette_)
-      return this->rgb565_buffer_.get();
     return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
   }
-  /// Raw RGB565 big-endian pointer. Valid only in iron palette mode; returns nullptr in grayscale.
-  /// Prefer get_display_buffer() + get_display_pixel_format() for format-agnostic code.
-  const uint8_t *get_rgb565_buffer() const { return this->rgb565_buffer_.get(); }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
     this->on_frame_callbacks_.add([trigger]() { trigger->trigger(); });
   }
@@ -170,9 +164,6 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
   std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
-  // Allocated explicitly in PSRAM via heap_caps_malloc; deleter calls heap_caps_free.
-  struct PsramDeleter { void operator()(uint8_t *p) const { heap_caps_free(p); } };
-  std::unique_ptr<uint8_t[], PsramDeleter> rgb565_buffer_{};
 
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;

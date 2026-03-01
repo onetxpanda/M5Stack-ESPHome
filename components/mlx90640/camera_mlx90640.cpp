@@ -56,17 +56,6 @@ void MLX90640::setup() {
                         fmt};
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(this->scaled_spec_.bytes_per_image());
 
-  if (this->iron_palette_) {
-    const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
-    this->rgb565_buffer_.reset(
-        static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
-    if (!this->rgb565_buffer_) {
-      ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer", static_cast<unsigned>(rgb565_size));
-      this->mark_failed();
-      return;
-    }
-  }
-
   MLX90640_I2CInit(this);
   int status = 0;
   uint16_t ee_data[832];
@@ -355,10 +344,8 @@ bool MLX90640::colormap_and_upscale_() {
       pixel_data[idx * 3 + 1] = c.g;
       pixel_data[idx * 3 + 2] = c.r;
     }
-    // Upscale into scaled_buffer_ (BGR888 for JPEG) and rgb565_buffer_ (big-endian RGB565
-    // for direct display use) simultaneously.
+    // Upscale into scaled_buffer_ (BGR888, used by both JPEG encoder and draw_pixels_at).
     uint8_t *dst = this->scaled_buffer_->get_data_buffer();
-    uint8_t *dst565 = this->rgb565_buffer_.get();
     const uint8_t *src = pixel_data;
     for (uint16_t oy = 0; oy < scaled_h; oy++) {
       const uint8_t *src_row = src + (oy / this->scale_) * COLS * 3;
@@ -367,10 +354,6 @@ bool MLX90640::colormap_and_upscale_() {
         *dst++ = p[0];
         *dst++ = p[1];
         *dst++ = p[2];
-        // p is [B, G, R] → RGB565 big-endian
-        uint16_t px = ((uint16_t)(p[2] & 0xF8) << 8) | ((uint16_t)(p[1] & 0xFC) << 3) | (p[0] >> 3);
-        *dst565++ = px >> 8;
-        *dst565++ = px & 0xFF;
       }
     }
   } else {
