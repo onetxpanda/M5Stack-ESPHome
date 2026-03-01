@@ -54,12 +54,10 @@ void MLX90640::setup() {
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(
       static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 3);
   const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
-  // Must be in DMA-capable internal SRAM: ESP32 DMA cannot read PSRAM, which
-  // would cause draw_pixels_at() to send zeros (black) on DMA-backed displays.
   this->rgb565_buffer_.reset(
-      static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_DMA | MALLOC_CAP_8BIT)));
+      static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
   if (!this->rgb565_buffer_) {
-    ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer in PSRAM", static_cast<unsigned>(rgb565_size));
+    ESP_LOGE(TAG, "Failed to allocate %u B RGB565 buffer", static_cast<unsigned>(rgb565_size));
     this->mark_failed();
     return;
   }
