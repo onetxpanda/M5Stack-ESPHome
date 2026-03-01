@@ -91,13 +91,15 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   uint16_t get_upscaled_width() const { return this->scaled_spec_.width; }
   uint16_t get_upscaled_height() const { return this->scaled_spec_.height; }
   /// Pixel format of the buffer returned by get_display_buffer().
-  /// Iron palette mode: PIXEL_FORMAT_RGB565 (big-endian R5G6B5; pass big_endian=true to draw_pixels_at).
-  /// Grayscale mode: PIXEL_FORMAT_GRAYSCALE (8-bit Y, 1 byte/pixel).
+  /// Iron palette: PIXEL_FORMAT_RGB565 (COLOR_ORDER_RGB, COLOR_BITNESS_565, big_endian=true).
+  /// Grayscale:    PIXEL_FORMAT_GRAYSCALE (COLOR_BITNESS_8, big_endian=false).
   camera::PixelFormat get_display_pixel_format() const {
     return this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE;
   }
-  /// Upscaled pixel buffer ready for draw_pixels_at(). Use get_display_pixel_format() to
-  /// determine the correct ColorOrder/ColorBitness arguments to pass. Valid after the first frame.
+  /// Whether the display buffer is stored big-endian. Always true for iron palette (RGB565),
+  /// always false for grayscale (Y8). Pass directly as the big_endian argument of draw_pixels_at().
+  bool get_display_big_endian() const { return this->iron_palette_; }
+  /// Upscaled pixel buffer ready for draw_pixels_at(). Valid after the first frame.
   const uint8_t *get_display_buffer() const {
     return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
   }
