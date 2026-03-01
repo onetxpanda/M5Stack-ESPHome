@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "esp_heap_caps.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -54,6 +55,22 @@ void MLX90640::setup() {
       this->iron_palette_ ? camera::PIXEL_FORMAT_RGB565 : camera::PIXEL_FORMAT_GRAYSCALE,
   };
   this->scaled_buffer_ = std::make_unique<camera::BufferImpl>(this->scaled_spec_.bytes_per_image());
+
+  if (this->iron_palette_) {
+    // The display buffer must live in memory the SPI DMA engine can read. Plain malloc() can
+    // return addresses that DMA silently ignores (sends zeros). Try internal DMA-capable SRAM
+    // first; fall back to PSRAM for large scales where internal RAM is insufficient.
+    const size_t rgb565_size = static_cast<size_t>(this->scaled_spec_.width) * this->scaled_spec_.height * 2;
+    uint8_t *buf = static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (!buf)
+      buf = static_cast<uint8_t *>(heap_caps_malloc(rgb565_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!buf) {
+      ESP_LOGE(TAG, "Failed to allocate %u B display buffer", static_cast<unsigned>(rgb565_size));
+      this->mark_failed();
+      return;
+    }
+    this->rgb565_buffer_.reset(buf);
+  }
 
   MLX90640_I2CInit(this);
   int status = 0;
@@ -335,7 +352,7 @@ bool MLX90640::colormap_and_upscale_() {
   const uint16_t scaled_h = this->scaled_spec_.height;
 
   if (this->iron_palette_) {
-    // Map and upscale in one pass → big-endian RGB565 for both JPEG encoder and draw_pixels_at.
+    // Map and upscale in one pass → big-endian RGB565 for JPEG encoder.
     for (uint16_t oy = 0; oy < scaled_h; oy++) {
       for (uint16_t ox = 0; ox < scaled_w; ox++) {
         float clamped = std::clamp(this->pixels_[(oy / this->scale_) * COLS + (ox / this->scale_)],
@@ -347,6 +364,9 @@ bool MLX90640::colormap_and_upscale_() {
         *dst++ = px & 0xFF;
       }
     }
+    // Copy to the DMA-capable display buffer so draw_pixels_at() can read it via SPI DMA.
+    memcpy(this->rgb565_buffer_.get(), this->scaled_buffer_->get_data_buffer(),
+           static_cast<size_t>(scaled_w) * scaled_h * 2);
   } else {
     // Map and upscale in one pass → Y8 for both JPEG encoder and draw_pixels_at.
     for (uint16_t oy = 0; oy < scaled_h; oy++) {

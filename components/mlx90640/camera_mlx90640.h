@@ -108,8 +108,11 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
   /// Whether the display buffer is stored big-endian. Always true for iron palette (RGB565),
   /// always false for grayscale (Y8). Pass directly as the big_endian argument of draw_pixels_at().
   bool get_display_big_endian() const { return this->iron_palette_; }
-  /// Upscaled pixel buffer ready for draw_pixels_at(). Valid after the first frame.
+  /// Upscaled RGB565 big-endian pixel buffer in DMA-capable memory, ready for draw_pixels_at().
+  /// Valid after the first frame. Returns nullptr if setup failed.
   const uint8_t *get_display_buffer() const {
+    if (this->iron_palette_)
+      return this->rgb565_buffer_.get();
     return this->scaled_buffer_ ? this->scaled_buffer_->get_data_buffer() : nullptr;
   }
   void register_on_frame_trigger(MLX90640FrameTrigger *trigger) {
@@ -165,6 +168,12 @@ class MLX90640 : public i2c::I2CDevice, public camera::Camera {
 
   camera::CameraImageSpec scaled_spec_{0, 0, camera::PIXEL_FORMAT_BGR888};
   std::unique_ptr<camera::BufferImpl> scaled_buffer_{};
+  // Separate display buffer allocated in DMA-capable internal SRAM (falls back to PSRAM at large
+  // scales). ESP32 SPI DMA cannot reliably read from memory returned by plain malloc(), which
+  // causes draw_pixels_at() to send zeros. An explicit heap_caps allocation guarantees the pointer
+  // is in a region the DMA engine can access.
+  struct HeapCapsDeleter { void operator()(uint8_t *p) const { heap_caps_free(p); } };
+  std::unique_ptr<uint8_t[], HeapCapsDeleter> rgb565_buffer_{};
 
   CallbackManager<void()> on_frame_callbacks_;
   std::vector<camera::CameraListener *> listeners_;
