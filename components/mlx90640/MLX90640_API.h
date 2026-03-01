@@ -73,9 +73,11 @@
 #define MLX90640_NIBBLE3(reg16) ((reg16 & MLX90640_NIBBLE3_MASK) >> 8)
 #define MLX90640_NIBBLE4(reg16) ((reg16 & MLX90640_NIBBLE4_MASK) >> 12)
 
-#define POW2(x) pow(2, (double)x) 
+// Use (float)(1 << n) instead of pow(2, n) — avoids libm log/exp, no includes needed.
+// All callers use exponent values in range 0..18 so int shift is safe.
+#define POW2(x) ((float)(1 << (int)(x)))
 
-#define SCALEALPHA 0.000001
+#define SCALEALPHA 0.000001f
     
 typedef struct
     {

@@ -335,10 +335,11 @@ bool MLX90640::colormap_and_upscale_() {
   this->data_valid_ = true;
 
   const float span = std::max(this->maxtemp_ - this->mintemp_, 1.0f);
+  const float inv_span = 255.0f / span;  // precompute: replaces per-pixel FP divide with multiply
   uint8_t *pixel_data = this->pixel_buffer_.get_data_buffer();
   for (size_t idx = 0; idx < PIXEL_COUNT; idx++) {
     float clamped = std::clamp(this->pixels_[idx], this->mintemp_, this->maxtemp_);
-    uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) / span * 255.0f));
+    uint8_t v = static_cast<uint8_t>(std::roundf((clamped - this->mintemp_) * inv_span));
     const IronColor &c = this->colormap_lut_[v];
     pixel_data[idx * 3 + 0] = c.b;  // PIXEL_FORMAT_BGR888: B, G, R
     pixel_data[idx * 3 + 1] = c.g;
